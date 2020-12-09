@@ -14,7 +14,7 @@ import glob
 from astropy.table import Table,join,vstack,unique
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
-
+#initial LC, then color-mag, then a bunch of periodogram functions
 
 def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0):
     '''Uses table (cross) to make lists of I band and V band tables
@@ -228,7 +228,7 @@ def window_loop(itab,orb,lower=10,upper=10,window=[11,31,51],cutdata=False,cut1=
 
 
 def pltphase(tab,best_p,freq,power,figsize=(6,4),inpd=True,inwin=False,wins=[],winpds=[],title='Largest Trend ',
-             size=2,ctime=False,cmap='magma',inloc='lower right',plotdet=False,avgph=True,mids=[],avgs=[],avgcolor='black',save=False,srcnum=7):
+             size=2,ctime=False,cmap='magma',inloc='lower right',plotdet=False,avgph=True,mids=[],avgs=[],avgcolor='darkseagreen',save=False,srcnum=7):
     '''Plot phase-folded data, with option to inset periodogram or window loop results'''
     fig,ax = plt.subplots(figsize=figsize)
     if inpd or inwin:
@@ -407,7 +407,9 @@ def meanphase(tab,pd,pbins=20,det=False):
         #phase in temporary df is less than phase in endb and more than the previous one
         tempfr = fr[fr['phase']<=p]
         tempfr = tempfr[tempfr['phase']>p-pd/pbins]
-        avgs.append(np.mean(imag))
+        if det: imagt = tempfr['I detrend']
+        else: imagt = tempfr['I mag']
+        avgs.append(np.mean(imagt))
     endb2 = np.concatenate([np.array([0]),endb])
     #middle of phase bins
     mid = (endb2[1:]+endb2[:-1])/2
