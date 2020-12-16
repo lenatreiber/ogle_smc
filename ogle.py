@@ -544,6 +544,66 @@ def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=
     ax[0].set_ylim(np.max(tab['I mag'][st:end])+.01,np.min(tab['I mag'][st:end])-.01)
     return df,pks
 
+def denselcpd(tab,dense,minp=5,maxp=100,figsize=(22,14),minpoints=30,color='palevioletred',plotbest=False,onlybp=False,det=False,window=31):
+    '''Use indices of dense regions (finddense) to plot subplots with LC chunks and inset periodograms
+    dense: array of inds of dense regions from finddense, or other array of indices to use
+    maxp: maximum period in periodogram search
+    minpoints: minimum number of points in a region
+    
+    returns period and power of top two peaks from each periodogram'''
+    fig = plt.figure(figsize=figsize)
+    p = 1 #separate counter to not leave blank spaces
+    bps = []
+    sbp = [] #second best period
+    maxpows = []
+    spows = []
+    stdate = []
+    endate = []
+    ndense = len(dense)
+    rows = ndense/4
+    for d in range(1,len(dense)):
+        if dense[d]-dense[d-1]>minpoints:
+            st = dense[d-1]
+            end = dense[d]
+            ttab = tab[st:end]
+            #detrend data 
+            if det:
+                detrend(ttab,window=window,plot=False)
+                imag = ttab['I detrend']
+            else: imag = ttab['I mag']
+            ax = fig.add_subplot(rows,4,p)
+            ax.scatter(ttab['MJD-50000'],imag,color=color,s=10)
+            maxi,mini = np.max(imag),np.min(imag)
+            ax.set_ylim(maxi+.04,mini-.04)
+            #instet periodogram
+            axins = inset_axes(ax, width=figsize[0]/20, height=figsize[1]/20,borderpad=0.5) 
+            freq,power,bp = periodogram(ttab,minp=minp,maxp=maxp,det=det,more=True,plot=False)
+            axins.plot(1/freq,power,color='black')
+            p+=1
+            bps.append(float(bp))
+            maxpows.append(np.max(power))
+            stdate.append(float(tab['MJD-50000'][st:st+1]))
+            endate.append(float(tab['MJD-50000'][end-1:end]))
+            #find second best period (returns df of period and power with descending power)
+            pf = findpeaks(freq,power,sigma=10,distance=10,pkorder=True)
+            if not onlybp:
+                sp = float(pf['period'][1:2])
+                spow = float(pf['power'][1:2])
+                sbp.append(sp)#append second highest
+                spows.append(spow)
+    stdate = np.array(stdate)
+    endate = np.array(endate)
+    if plotbest:
+        fig = plt.figure(figsize=(5,3))
+        plt.scatter(stdate+(endate-stdate)/2,bps,c=maxpows)
+        plt.errorbar(stdate+(endate-stdate)/2,bps,xerr=(endate-stdate)/2,c='grey',alpha=0.4,linestyle='none')
+#         plt.axhline(orb,color='grey')
+        plt.colorbar(label='Power')
+        plt.ylabel('Best Period')
+        plt.xlabel('MJD-50000')
+    if onlybp: return bps,maxpows,np.array(stdate),np.array(endate)
+    else: return bps,maxpows,sbp,spows,stdate,endate
+
 
 def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
     Imag = tab['I mag']
