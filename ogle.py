@@ -1,3 +1,6 @@
+
+#BETTER DOCUMENTATION COMING SOON
+
 from uncertainties import ufloat
 from uncertainties.umath import *
 import math
@@ -119,24 +122,27 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
     elif stack: return vstack(iband)
     else: return iband
     
-def colormag(iband,vband,figsize=(5,4)):
+def colormag(iband,vband,figsize=(5,4),plot=True,printcorr=True):
     '''Interpolates I band data at times of V band and then plots color-mag with best fit and corr coeff.
     Now assumes iband and vband are single tables, but can add option to vstack in function if needed.'''
     #interpolate I band
     i_interp = np.interp(vband['MJD-50000'],iband['MJD-50000'],iband['I mag'])
     
-    plt.figure(figsize=figsize)
-    #plot Iint vs. V-I
-    plt.scatter(vband['V mag']-i_interp,i_interp,color='black')
-    #flip y-axis such that positive corr on plot is redder when brighter
-    maxi,mini = np.max(i_interp),np.min(i_interp)
-    plt.ylim(maxi+.04,mini-.04)
-    plt.ylabel(r'$\mathrm{I_{int}}$',fontsize=14)
-    plt.xlabel(r'$\mathrm{V - I_{int}}$',fontsize=14)
-    #print correlation corr with interpolated I and V-I and then V and V-I
-    print('I and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,i_interp)[1][0])
-    print('V and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,vband['V mag'])[1][0]) 
-    return
+    if plot:
+        plt.figure(figsize=figsize)
+        #plot Iint vs. V-I
+        plt.scatter(vband['V mag']-i_interp,i_interp,color='black')
+        #flip y-axis such that positive corr on plot is redder when brighter
+        maxi,mini = np.max(i_interp),np.min(i_interp)
+        plt.ylim(maxi+.04,mini-.04)
+        plt.ylabel(r'$\mathrm{I_{int}}$',fontsize=14)
+        plt.xlabel(r'$\mathrm{V - I_{int}}$',fontsize=14)
+    if printcorr:
+        #print correlation corr with interpolated I and V-I and then V and V-I
+        print('I and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,i_interp)[1][0])
+        print('V and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,vband['V mag'])[1][0]) 
+    if plot: return
+    else: return i_interp
 
 
 #-----------------------------------------------------------------PERIODOGRAMS--------------------------------------------------------------
@@ -391,6 +397,7 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
     #return tbp,bp2,np.mean(bps),obp
 
 def meanphase(tab,pd,pbins=20,det=False):
+    '''Compute mean mag in phase bins of LC'''
     fr = tab.to_pandas() #don't modify tab
     fr['phase'] = (fr['MJD-50000']%pd)
     fr = fr.sort_values(by='phase',ascending=True)
@@ -415,8 +422,130 @@ def meanphase(tab,pd,pbins=20,det=False):
     mid = (endb2[1:]+endb2[:-1])/2
     return mid,avgs
 
+#can consider def denseyear as separate function
+    
+    #return inds of densest year
+def finddense(tab,maxspace=20,retsample=False,retall=False):
+    '''Find largest region with dense sampling'''
+    #spacing between points
+    samp = tab['MJD-50000'][1:]-tab['MJD-50000'][:-1]
+    #indices of sampling where spacking is greater than maxspace (default 20 days)
+    sinds = np.where(samp>maxspace)[0]
+    #add 1 to each value to make indexing work
+    sinds += 1
+    #number of points between gaps of maxspace
+    sdiff = sinds[1:]-sinds[:-1]
+    #starting index of densest/longest part (most points without a break of maxspace or more)
+    stind = np.argmax(sdiff)
+    if retall:
+        #return all dense regions and index of most dense
+        return sinds,stind
+    #find average sampling to inform periodogram
+    elif retsample:
+        st = sinds[stind]
+        end = sinds[stind+1]
+        #mean sampling in this region
+        msample = np.mean(tab['MJD-50000'][st+1:end]-tab['MJD-50000'][st:end-1])
+        return (st,end),msample
+    else: return sinds[stind:stind+2]
 
-def detrend(tab,window=201,printall=False,plot=False):
+def findpeaks(freq,power,retsorted=False,sigma=0,height=0.05,distance=30,div=2,pkorder=False):
+    #put period and power of periodogram results into DataFrame
+    df = pd.DataFrame(columns=['period','power'])
+    df['period'] = 1/freq
+    df['power'] = power
+    #automatically set threshold height using 3 sigma
+    if sigma>0:
+        #want to find med and stdev of power (only including low powers)
+        #length of df
+        lenf = len(df)
+        df_pow = df.sort_values(by='power',ascending=False)
+        #safe as not including peaks
+        #can change div to include more or less in median and stdev determination
+        low = df_pow[int(lenf/div):]
+        #stdev
+        std = np.std(low['power'])
+        #find median value of power
+        medpow = np.median(low['power'])
+        #set height to sigma over median
+        height = medpow+sigma*std
+    #identify peaks
+    peaks = signal.find_peaks(df['power'],height=height,distance=distance) 
+    
+    #sort peaks by power and return
+    if pkorder:
+        #data frame of peaks
+        pf = pd.DataFrame(columns=['period','power'])
+        pers = []
+        for p in peaks[0]: #indexing only working with loop
+            pers.append(float(df[p:p+1]['period']))
+        pf['period'] = pers
+        pf['power'] = peaks[1]['peak_heights']
+        pf = pf.sort_values(by='power',ascending=False)
+        return pf
+    #return DataFrame sorted by power and peaks dictionary
+    elif retsorted: return df_pow,peaks
+    #default: just return peaks dictionary
+    else: return df,peaks #either need df or use inds of peaks before returning
+
+def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=20,distance=30,minp=5,maxp=100,
+               pbins=10,maxspace=20,plotpd=False,color='darkseagreen',top5=True):
+    '''Uses findpeaks to run periodogram, find peaks, and then phase folds with each one as well as, 
+    optionally, the known orbital period.
+    
+    dense: use finddense to find dense LC region 
+    meanp: include mean phase on plots
+    pbins: number of phase bins for meanphase
+    top3: only takes top three peaks
+    '''
+    if dense:
+        dinds = finddense(tab,maxspace=maxspace)
+        st,end = dinds[0],dinds[1]
+    print(f'start ind: {st}, end ind: {end}')
+    #runs periodogram
+    freq,power,bp = periodogram(tab[st:end],more=True,minp=minp,maxp=maxp,plot=plotpd)
+    #runs findpeaks, which finds periodogram peaks and returns df of period and power and peaks tuple
+    df,pks = findpeaks(freq,power,sigma=sigma,distance=distance)
+    numpk = len(pks[0])
+    if top5 and numpk>5:
+        #only keep top five peaks
+        pks
+        numpk = 5
+        pf = pd.DataFrame(columns=['ind','pow'])
+        pf['ind'],pf['pow'] = pks[0],pks[1]['peak_heights']
+        pf = pf.sort_values(by='pow',ascending=False)
+        pf = pf[:5] #only keep top 5 power values
+        pinds = np.array(pf['ind'])
+        pows = np.array(pf['pow'])
+    else:
+        pinds = pks[0]
+        pows = pks[1]['peak_heights']
+    if incl_orb:
+        numpk+=1    
+    fig,ax = plt.subplots(1,numpk,figsize=(numpk*4,3),sharey=True)
+    plt.subplots_adjust(wspace=0.05)
+    for i in range(numpk):
+        if i == 0 and incl_orb:
+            p = orb
+            label = 'orb pd: '+str(p)
+        else:
+            pind = pinds[i-1]
+            p = float(df['period'][pind:pind+1])
+            po = pows[i-1]
+            label = f'{p:.2f} pow: {po:.2f}'
+        #in this case was just using densest region
+        ax[i].scatter(tab['MJD-50000'][st:end]%p,tab['I mag'][st:end],color=color,s=4,label=label)
+        ax[i].scatter(p+tab['MJD-50000'][st:end]%p,tab['I mag'][st:end],color=color,s=4)
+        if meanp:
+            mid,avgs = meanphase(tab[st:end],p,pbins=pbins,det=False)
+            ax[i].plot(mid,avgs,color='black')
+            ax[i].plot(p+mid,avgs,color='black')
+        ax[i].legend()
+    ax[0].set_ylim(np.max(tab['I mag'][st:end])+.01,np.min(tab['I mag'][st:end])-.01)
+    return df,pks
+
+
+def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
     Imag = tab['I mag']
     if printall: print('Smooth (window = ', window, ') and detrend data...')
     Ismooth = signal.savgol_filter(Imag, window, 1)
@@ -426,11 +555,37 @@ def detrend(tab,window=201,printall=False,plot=False):
 
     if printall: print('min:',i26['I detrend'].min(),'max:',i26['I detrend'].max())
     if plot:
-        plt.scatter(tab['MJD-50000'],tab['I mag'],color='black',label='original')
-        plt.scatter(tab['MJD-50000'],tab['I detrend'],color='darkseagreen',label='detrended')
+        fig = plt.figure(figsize=figsize)
+        plt.scatter(tab['MJD-50000'],tab['I mag'],color='black',label='original',s=size)
+        plt.scatter(tab['MJD-50000'],tab['I detrend'],color='darkseagreen',label='detrended',s=size)
         plt.legend()
         
-def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,figsize=(4,3),plot=True,dodetrend=False,window=11):
+def detline(tab,st=0,end=-1,plot=False,figsize=(12,4),color='palevioletred',size=5,addmean=True):
+    '''Detrend I mag with linear fit
+    Returns I mag - linear fit
+    addmean: bool to add mean I mag value after subtraction'''
+    ttab = tab[st:end]
+    mod = np.polyfit(ttab['MJD-50000'],ttab['I mag'],1)
+    linmod = ttab['MJD-50000']*mod[0]+mod[1]
+    if addmean: lindet = ttab['I mag'] - linmod + np.mean(ttab['I mag'])
+    else: lindet = ttab['I mag'] - linmod
+    if plot:
+        fig,(ax1,ax2) = plt.subplots(1,2,figsize=figsize)
+        #plot original data
+        ax1.scatter(ttab['MJD-50000'],ttab['I mag'],color=color,s=size)
+        #flip axes
+        maxi,mini = np.max(ttab['I mag']),np.min(ttab['I mag'])
+        ax1.set_ylim(maxi+0.02,mini-0.02)
+        
+        #plot detrended data
+        ax2.scatter(ttab['MJD-50000'],lindet,s=size,color=color)
+        #flip axes
+        maxi,mini = np.max(lindet),np.min(lindet)
+        ax2.set_ylim(maxi+0.02,mini-0.02)
+    return lindet
+
+
+def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,figsize=(4,3),plot=True,dodetrend=False,window=11,samples=10):
     '''Perform and plot single LS periodogram.
     Two different return options.'''
     
@@ -447,7 +602,7 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
     freq, power = ls.autopower(normalization='standard',
                            minimum_frequency=minf,
                            maximum_frequency=maxf,
-                           samples_per_peak=10)
+                           samples_per_peak=samples)
     if bayes: power = np.exp(power)
         
     best_freq = freq[np.argmax(power)]
@@ -458,8 +613,30 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
         plt.xlabel('Period',fontsize=14)
         plt.ylabel('Power',fontsize=14)
         #put text with best period
-        plt.text(minp+(maxp-minp)/2,0.8*np.max(power),f'{1/best_freq:2f}')
+        plt.text(minp+(maxp-minp)/2,0.8*np.max(power),f'{1/best_freq:.2f}')
     if more:
         return freq, power, 1/best_freq
     else:
         return 1/best_freq
+#-----------------------------------------------------------------FLARE-FITTING--------------------------------------------------------------
+
+    
+def fit_sin(tt, yy):
+    '''Fit sin to the input time sequence, and return fitting parameters "amp", "omega", "phase", "offset", "freq", "period" and "fitfunc"
+    Found this function online'''
+    tt = np.array(tt)
+    yy = np.array(yy)
+    ff = np.fft.fftfreq(len(tt), (tt[1]-tt[0]))   # assume uniform spacing
+    Fyy = abs(np.fft.fft(yy))
+    #guess_freq = abs(ff[np.argmax(Fyy[1:])+1])   # excluding the zero frequency "peak", which is related to offset
+    guess_freq = 1/400.
+    guess_amp = np.std(yy) * 2.**0.5
+    guess_offset = np.mean(yy)
+    guess = np.array([guess_amp, 2.*np.pi*guess_freq, 0., guess_offset])
+
+    def sinfunc(t, A, w, p, c):  return A * np.sin(w*t + p) + c
+    popt, pcov = scipy.optimize.curve_fit(sinfunc, tt, yy, p0=guess)
+    A, w, p, c = popt
+    f = w/(2.*np.pi)
+    fitfunc = lambda t: A * np.sin(w*t + p) + c
+    return {"amp": A, "omega": w, "phase": p, "offset": c, "freq": f, "period": 1./f, "fitfunc": fitfunc, "maxcov": np.max(pcov), "rawres": (guess,popt,pcov)}
