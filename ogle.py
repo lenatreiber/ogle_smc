@@ -17,6 +17,9 @@ import glob
 from astropy.table import Table,join,vstack,unique
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
+def sf(name,dpi=200,path='Figs/'):
+    plt.savefig(path+name+'.png',dpi=dpi,bbox_inches='tight')
+
 #initial LC, then color-mag, then a bunch of periodogram functions
 
 def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0):
@@ -121,6 +124,36 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
     elif both: return iband,vband
     elif stack: return vstack(iband)
     else: return iband
+    
+def gallery(cross,n=0,ctime=True,color='#CF6275',cmap='viridis'): #assumes several variables defined already
+    '''Make gallery of 10 sources with I mag LC and color-mag diagram
+    To do: generalize; account for tables that pass in with Strings rather than floats
+    colorbar?'''
+    fig = plt.figure(figsize=(22,18))
+    plt.subplots_adjust(wspace=.25,hspace=.25)
+    c = 1
+    while c < 20:
+        i,v = getIV(cross['src_n'][n],cross,stack=True,both=True,plot=False,size=2)
+        ax = fig.add_subplot(5,4,c)
+        ax.scatter(i['MJD-50000'],i['I mag'],color=color,s=3)
+        ax.set_title(str(cross['src_n'][n]))
+        maxi,mini = np.max(i['I mag']),np.min(i['I mag'])
+        ax.set_ylim(maxi+.015,mini-.015)
+        c+=1
+        n+=1
+        #color-mag
+        ax1 = fig.add_subplot(5,4,c)
+        i_interp = colormag(i,v,plot=False,printcorr=False)
+        #scatter I vs V-I
+        if ctime:
+            #color represents V mag time (also where I is interpolated)
+            ax1.scatter(v['V mag']-i_interp,i_interp,c=v['MJD-50000'],s=3,cmap=cmap)
+            #also plot i_interp with same color on first plot
+            ax.scatter(v['MJD-50000'],i_interp,c=v['MJD-50000'],s=3,cmap=cmap)
+        else: ax1.scatter(v['V mag']-i_interp,i_interp,color='black',s=3)
+        ax1.set_ylim(maxi+.01,mini-.01)
+        c+=1
+    return n
     
 def colormag(iband,vband,figsize=(5,4),plot=True,printcorr=True):
     '''Interpolates I band data at times of V band and then plots color-mag with best fit and corr coeff.
