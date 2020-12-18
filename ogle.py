@@ -155,7 +155,7 @@ def gallery(cross,n=0,ctime=True,color='#CF6275',cmap='viridis'): #assumes sever
         c+=1
     return n
     
-def colormag(iband,vband,figsize=(5,4),plot=True,printcorr=True):
+def colormag(iband,vband,figsize=(5,4),plot=True,printcorr=True,retint=False,ctime=True,cmap='viridis'):
     '''Interpolates I band data at times of V band and then plots color-mag with best fit and corr coeff.
     Now assumes iband and vband are single tables, but can add option to vstack in function if needed.'''
     #interpolate I band
@@ -164,7 +164,11 @@ def colormag(iband,vband,figsize=(5,4),plot=True,printcorr=True):
     if plot:
         plt.figure(figsize=figsize)
         #plot Iint vs. V-I
-        plt.scatter(vband['V mag']-i_interp,i_interp,color='black')
+        if ctime:
+            plt.scatter(vband['V mag']-i_interp,i_interp,c=vband['MJD-50000'],cmap=cmap)
+            plt.colorbar(label='MJD-50000')
+        else: plt.scatter(vband['V mag']-i_interp,i_interp,color='black')
+            
         #flip y-axis such that positive corr on plot is redder when brighter
         maxi,mini = np.max(i_interp),np.min(i_interp)
         plt.ylim(maxi+.04,mini-.04)
@@ -174,8 +178,8 @@ def colormag(iband,vband,figsize=(5,4),plot=True,printcorr=True):
         #print correlation corr with interpolated I and V-I and then V and V-I
         print('I and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,i_interp)[1][0])
         print('V and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,vband['V mag'])[1][0]) 
-    if plot: return
-    else: return i_interp
+    if retint or not plot: return i_interp
+    else: return
 
 
 #-----------------------------------------------------------------PERIODOGRAMS--------------------------------------------------------------
@@ -365,7 +369,7 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
         #first: pdgram on chunks without detrending
         totinds = len(tab)
         #use total points to break up into chunks
-        cinds = np.arange(0,totinds,int(totinds/numcuts))
+        cinds = np.arange(0,totinds+1,int(totinds/numcuts)) #+1 just necessary in case totinds divisible by numcuts
         #loop thru cinds 
         cfreqs,cpows,cbps = [],[],[]
         if plotpd:
@@ -522,7 +526,7 @@ def findpeaks(freq,power,retsorted=False,sigma=0,height=0.05,distance=30,div=2,p
     else: return df,peaks #either need df or use inds of peaks before returning
 
 def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=20,distance=30,minp=5,maxp=100,
-               pbins=10,maxspace=20,plotpd=False,color='darkseagreen',top5=True):
+               pbins=10,maxspace=20,plotpd=False,color='darkseagreen',top5=True,pkorder=False):
     '''Uses findpeaks to run periodogram, find peaks, and then phase folds with each one as well as, 
     optionally, the known orbital period.
     
@@ -554,9 +558,12 @@ def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=
         pinds = pks[0]
         pows = pks[1]['peak_heights']
     if incl_orb:
-        numpk+=1    
-    fig,ax = plt.subplots(1,numpk,figsize=(numpk*4,3),sharey=True)
+        numpk+=1   
+    if numpk<6:fig,ax = plt.subplots(1,numpk,figsize=(numpk*4,3),sharey=True)
+    elif top5:fig,ax = plt.subplots(1,6,figsize=(6*4,3),sharey=True) 
+    else: fig,ax = plt.subplots(1,numpk,figsize=(numpk*4,3),sharey=True)
     plt.subplots_adjust(wspace=0.05)
+    if numpk == 1: return df,pks
     for i in range(numpk):
         if i == 0 and incl_orb:
             p = orb
@@ -575,7 +582,18 @@ def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=
             ax[i].plot(p+mid,avgs,color='black')
         ax[i].legend()
     ax[0].set_ylim(np.max(tab['I mag'][st:end])+.01,np.min(tab['I mag'][st:end])-.01)
-    return df,pks
+    if pkorder:
+        #data frame of peaks
+        pf = pd.DataFrame(columns=['period','power'])
+        pers = []
+        for p in pks[0]: #indexing only working with loop
+            pers.append(float(df[p:p+1]['period']))
+        pf['period'] = pers
+        pf['power'] = pks[1]['peak_heights']
+        pf = pf.sort_values(by='power',ascending=False)
+        return pf
+    
+    else: return df,pks
 
 def denselcpd(tab,dense,minp=5,maxp=100,figsize=(22,14),minpoints=30,color='palevioletred',plotbest=False,onlybp=False,det=False,window=31):
     '''Use indices of dense regions (finddense) to plot subplots with LC chunks and inset periodograms
