@@ -155,25 +155,41 @@ def gallery(cross,n=0,ctime=True,color='#CF6275',cmap='viridis'): #assumes sever
         c+=1
     return n
     
-def colormag(iband,vband,figsize=(5,4),plot=True,printcorr=True,retint=False,ctime=True,cmap='viridis'):
+def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,ctime=True,cmap='viridis',both=True):
     '''Interpolates I band data at times of V band and then plots color-mag with best fit and corr coeff.
     Now assumes iband and vband are single tables, but can add option to vstack in function if needed.'''
     #interpolate I band
     i_interp = np.interp(vband['MJD-50000'],iband['MJD-50000'],iband['I mag'])
     
     if plot:
-        plt.figure(figsize=figsize)
+        if both: 
+            fig,(ax,ax1) = plt.subplots(2,1,figsize=figsize,sharex=True)
+            plt.subplots_adjust(hspace=0.05)
+            axlist = [ax,ax1]
+        else: 
+            fig,ax = plt.subplots(1,1,figsize=figsize)
+            axlist = [ax]
         #plot Iint vs. V-I
         if ctime:
-            plt.scatter(vband['V mag']-i_interp,i_interp,c=vband['MJD-50000'],cmap=cmap)
-            plt.colorbar(label='MJD-50000')
-        else: plt.scatter(vband['V mag']-i_interp,i_interp,color='black')
-            
+            im = ax.scatter(vband['V mag']-i_interp,i_interp,c=vband['MJD-50000'],cmap=cmap)
+            if both: ax1.scatter(vband['V mag']-i_interp,vband['V mag'],c=vband['MJD-50000'],cmap=cmap)
+            fig.colorbar(im, ax=axlist,label='MJD-50000')        
+        else: 
+            ax.scatter(vband['V mag']-i_interp,i_interp,color='black')
+            if both: ax1.scatter(vband['V mag']-i_interp,vband['V mag'],color='black')
         #flip y-axis such that positive corr on plot is redder when brighter
         maxi,mini = np.max(i_interp),np.min(i_interp)
-        plt.ylim(maxi+.04,mini-.04)
-        plt.ylabel(r'$\mathrm{I_{int}}$',fontsize=14)
-        plt.xlabel(r'$\mathrm{V - I_{int}}$',fontsize=14)
+        maxv,minv = np.max(vband['V mag']),np.min(vband['V mag'])
+        
+        
+        ax.set_ylim(maxi+.04,mini-.04)
+        if both:ax1.set_ylim(maxv+.04,minv-.04)
+        
+        ax.set_ylabel(r'$\mathrm{I_{int}}$',fontsize=14)
+        if both: 
+            ax1.set_xlabel(r'$\mathrm{V - I_{int}}$',fontsize=14)
+            ax1.set_ylabel('V',fontsize=14)
+        else: ax.set_xlabel(r'$\mathrm{V - I_{int}}$',fontsize=14)
     if printcorr:
         #print correlation corr with interpolated I and V-I and then V and V-I
         print('I and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,i_interp)[1][0])
@@ -433,7 +449,7 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
     return 
     #return tbp,bp2,np.mean(bps),obp
 
-def meanphase(tab,pd,pbins=20,det=False):
+def meanphase(tab,pd,pbins=20,det=False,med=False):
     '''Compute mean mag in phase bins of LC'''
     fr = tab.to_pandas() #don't modify tab
     fr['phase'] = (fr['MJD-50000']%pd)
@@ -453,7 +469,9 @@ def meanphase(tab,pd,pbins=20,det=False):
         tempfr = tempfr[tempfr['phase']>p-pd/pbins]
         if det: imagt = tempfr['I detrend']
         else: imagt = tempfr['I mag']
-        avgs.append(np.mean(imagt))
+        #use median instead
+        if med:avgs.append(np.median(imagt))
+        else: avgs.append(np.mean(imagt))
     endb2 = np.concatenate([np.array([0]),endb])
     #middle of phase bins
     mid = (endb2[1:]+endb2[:-1])/2
@@ -732,7 +750,7 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
 #-----------------------------------------------------------------FLARE-FITTING--------------------------------------------------------------
 
     
-def fit_sin(tt, yy):
+def fit_sin(tt, yy,guess_freq=1/400.):
     '''Fit sin to the input time sequence, and return fitting parameters "amp", "omega", "phase", "offset", "freq", "period" and "fitfunc"
     Found this function online'''
     tt = np.array(tt)
@@ -740,7 +758,7 @@ def fit_sin(tt, yy):
     ff = np.fft.fftfreq(len(tt), (tt[1]-tt[0]))   # assume uniform spacing
     Fyy = abs(np.fft.fft(yy))
     #guess_freq = abs(ff[np.argmax(Fyy[1:])+1])   # excluding the zero frequency "peak", which is related to offset
-    guess_freq = 1/400.
+#     guess_freq = 1/400.
     guess_amp = np.std(yy) * 2.**0.5
     guess_offset = np.mean(yy)
     guess = np.array([guess_amp, 2.*np.pi*guess_freq, 0., guess_offset])
