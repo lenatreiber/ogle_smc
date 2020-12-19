@@ -75,19 +75,19 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
         else: fig,ax = plt.subplots(1,1,figsize=figsize)
         maxmag = 0
         minmag = np.inf
-        ax.scatter(ib['MJD-50000'],ib['I mag'],color='#CF6275',s=size)
+        ax.scatter(ib['MJD-50000'],ib['I mag'],color='#CF6275',s=size,label='I band')
         maxmag = np.max(ib['I mag'])
         minmag = np.min(ib['I mag'])
-        ax.scatter(vb['MJD-50000'],vb['V mag'],color='navy',s=size)
+        ax.scatter(vb['MJD-50000'],vb['V mag'],color='navy',s=size,label='V band')
         if np.max(vb['V mag'])>maxmag: 
             maxmag = np.max(vb['V mag'])
         if np.min(vb['V mag'])<minmag: 
             minmag = np.min(vb['V mag'])
-        ax.set_xlabel('MJD-50000')
-        ax.set_ylabel('OGLE mag')
+        ax.set_xlabel('MJD-50000',fontsize=14)
+        ax.set_ylabel('OGLE mag',fontsize=14)
         ax.set_ylim(maxmag+.05,minmag-.05)
-        ax.set_title('src_n: '+str(num)+' RA: '+str(ra)+' Dec: '+str(dec))
-
+        ax.set_title('Source #'+str(num)+' RA: '+str(ra)+' Dec: '+str(dec))
+        ax.legend()
         if zooms: #for now just plots I band
             #ax1 zoom is hundreds of days
             #find median time spacing between points
@@ -449,7 +449,7 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
     return 
     #return tbp,bp2,np.mean(bps),obp
 
-def meanphase(tab,pd,pbins=20,det=False,med=False):
+def meanphase(tab,pd,pbins=20,det=False,med=False,double=False):
     '''Compute mean mag in phase bins of LC'''
     fr = tab.to_pandas() #don't modify tab
     fr['phase'] = (fr['MJD-50000']%pd)
@@ -475,7 +475,9 @@ def meanphase(tab,pd,pbins=20,det=False,med=False):
     endb2 = np.concatenate([np.array([0]),endb])
     #middle of phase bins
     mid = (endb2[1:]+endb2[:-1])/2
-    return mid,avgs
+    #for two phases
+    if double: return np.concatenate([mid,pd+mid]),np.concatenate([avgs,avgs])
+    else: return mid,avgs
 
 #can consider def denseyear as separate function
     
@@ -544,7 +546,7 @@ def findpeaks(freq,power,retsorted=False,sigma=0,height=0.05,distance=30,div=2,p
     else: return df,peaks #either need df or use inds of peaks before returning
 
 def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=20,distance=30,minp=5,maxp=100,
-               pbins=10,maxspace=20,plotpd=False,color='darkseagreen',top5=True,pkorder=False):
+               pbins=10,maxspace=20,plotpd=False,color='darkseagreen',top5=True,pkorder=False,samples=10):
     '''Uses findpeaks to run periodogram, find peaks, and then phase folds with each one as well as, 
     optionally, the known orbital period.
     
@@ -558,7 +560,7 @@ def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=
         st,end = dinds[0],dinds[1]
     print(f'start ind: {st}, end ind: {end}')
     #runs periodogram
-    freq,power,bp = periodogram(tab[st:end],more=True,minp=minp,maxp=maxp,plot=plotpd)
+    freq,power,bp = periodogram(tab[st:end],more=True,minp=minp,maxp=maxp,plot=plotpd,samples=samples)
     #runs findpeaks, which finds periodogram peaks and returns df of period and power and peaks tuple
     df,pks = findpeaks(freq,power,sigma=sigma,distance=distance)
     numpk = len(pks[0])
@@ -613,7 +615,7 @@ def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=
     
     else: return df,pks
 
-def denselcpd(tab,dense,minp=5,maxp=100,figsize=(22,14),minpoints=30,color='palevioletred',plotbest=False,onlybp=False,det=False,window=31):
+def denselcpd(tab,dense,orb=0,minp=5,maxp=100,figsize=(22,14),minpoints=30,color='palevioletred',plotbest=False,onlybp=False,det=False,window=31):
     '''Use indices of dense regions (finddense) to plot subplots with LC chunks and inset periodograms
     dense: array of inds of dense regions from finddense, or other array of indices to use
     maxp: maximum period in periodogram search
@@ -670,8 +672,50 @@ def denselcpd(tab,dense,minp=5,maxp=100,figsize=(22,14),minpoints=30,color='pale
         plt.colorbar(label='Power')
         plt.ylabel('Best Period')
         plt.xlabel('MJD-50000')
+        if orb>0: plt.axhline(orb,alpha=0.4)
     if onlybp: return bps,maxpows,np.array(stdate),np.array(endate)
     else: return bps,maxpows,sbp,spows,stdate,endate
+
+def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81):
+    '''One periodogram per year
+    returns years (indices of year bounds) and list best periods'''
+    #make tab for each year in LC
+    years = []
+    stdate = iband['MJD-50000'][0]
+    endate = iband['MJD-50000'][-1]
+    y = 1
+    while y < int((endate-stdate)/365)+1:
+        #less than next year
+        year = iband[iband['MJD-50000']<stdate+365*y]
+        #also more than previous
+        year = year[year['MJD-50000']>stdate+365*(y-1)]
+
+        years.append(year)
+        y+=1
+    #make it easy by assuming max possible years and fill in
+    fig = plt.figure(figsize=(22,16))
+    bps = []
+    p = 1
+    for y in years:
+        if det:
+            if len(y)>window: detrend(y,window=window)
+        freq,power,bp = periodogram(y,minp=minp,maxp=maxp,more=True,plot=False,det=det)
+        bps.append(float(bp))
+        ax = fig.add_subplot(4,6,p)
+        ax.plot(1/freq,power,color='black')
+        if orb>0:ax.axvline(orb,color='darkseagreen',alpha=0.5)
+        p+=1
+    if plotbest:
+        fig,ax = plt.subplots(1,1,figsize=(4,3))
+        ax.scatter(np.arange(len(years)),bps,color='black')
+        if orb>0:ax.axhline(orb,color='darkseagreen',alpha=0.5)
+        ax.set_ylabel('Best Period (days)')
+        ax.set_xlabel('Year Number')
+        #residual plot
+#         ax1.scatter(np.arange(len(years)),np.array(bps)-orb,color='black')
+#         ax1.axhline(0,alpha=0.5)
+#         ax1.set_ylabel('Residuals (Best - Est. Period)')
+    return years,bps
 
 
 def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
