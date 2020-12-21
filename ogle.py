@@ -1,7 +1,7 @@
 
 #BETTER DOCUMENTATION COMING SOON
 
-from uncertainties import ufloat
+from uncertainties import ufloat,unumpy
 from uncertainties.umath import *
 import math
 import numpy as np
@@ -169,14 +169,28 @@ def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,cti
         else: 
             fig,ax = plt.subplots(1,1,figsize=figsize)
             axlist = [ax]
+        #approximate interpolated I errors as maximum I band error
+        ie = np.ones(len(i_interp))*np.max(iband['I mag err'])
+        #propagate errors to get error on V-I points
+        verr = unumpy.uarray(vband['V mag'],vband['V mag err'])
+        ierr = unumpy.uarray(i_interp,ie)
+        v_i = verr-ierr
+        #just take errors
+        v_i_err = unumpy.std_devs(v_i)
+        
         #plot Iint vs. V-I
         if ctime:
-            im = ax.scatter(vband['V mag']-i_interp,i_interp,c=vband['MJD-50000'],cmap=cmap)
-            if both: ax1.scatter(vband['V mag']-i_interp,vband['V mag'],c=vband['MJD-50000'],cmap=cmap)
+            im = ax.scatter(vband['V mag']-i_interp,i_interp,c=vband['MJD-50000'],cmap=cmap,zorder=10)
+            #add errorbars
+            ax.errorbar(vband['V mag']-i_interp,i_interp,yerr=ie,xerr=v_i_err,color='grey',zorder=0,ls='none',marker='')
+            if both: 
+                ax1.scatter(vband['V mag']-i_interp,vband['V mag'],c=vband['MJD-50000'],cmap=cmap,zorder=10)
+                #add errorbars separately
+                ax1.errorbar(vband['V mag']-i_interp,vband['V mag'],yerr=vband['V mag err'],xerr=v_i_err,color='grey',zorder=0,ls='none',marker='')
             fig.colorbar(im, ax=axlist,label='MJD-50000')        
         else: 
-            ax.scatter(vband['V mag']-i_interp,i_interp,color='black')
-            if both: ax1.scatter(vband['V mag']-i_interp,vband['V mag'],color='black')
+            ax.errorbar(vband['V mag']-i_interp,i_interp,yerr=ie,xerr=v_i_err,color='black',linestyle='none',marker='o')
+            if both: ax1.errorbar(vband['V mag']-i_interp,vband['V mag'],yerr=vband['V mag err'],xerr=v_i_err,color='black',linestyle='none',marker='o')
         #flip y-axis such that positive corr on plot is redder when brighter
         maxi,mini = np.max(i_interp),np.min(i_interp)
         maxv,minv = np.max(vband['V mag']),np.min(vband['V mag'])
