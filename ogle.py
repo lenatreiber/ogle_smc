@@ -457,15 +457,15 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
         pltphase(tab,np.mean(obps),freq2,power2,figsize=figsizebig,inpd=False,inwin=True,wins=windows,winpds=obps,
                  title='Mean Small Window Trend ',size=3,ctime=ctime,cmap=cmap,inloc=inloc,plotdet=plotdet,avgph=True,
                  mids=omid,avgs=oavgs,save=saveall,srcnum=srcnum)
-        
-            
-            
+                  
     return 
     #return tbp,bp2,np.mean(bps),obp
 
-def meanphase(tab,pd,pbins=20,det=False,med=False,double=False):
+def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch=0):
     '''Compute mean mag in phase bins of LC'''
     fr = tab.to_pandas() #don't modify tab
+    #add epoch for phase shift
+    fr['MJD-50000'] += epoch
     fr['phase'] = (fr['MJD-50000']%pd)
     fr = fr.sort_values(by='phase',ascending=True)
     #use detrended or regular imag
@@ -476,6 +476,7 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=False):
     #other method with just loop length of number of phase bins
     #for now just one to do all the necessary filtering
     avgs = [] #list of average count rate in each phase bin
+    stdevs = []
     endb = np.arange(pd/pbins,pd+pd/pbins,pd/pbins)
     for p in endb:
         #phase in temporary df is less than phase in endb and more than the previous one
@@ -486,14 +487,41 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=False):
         #use median instead
         if med:avgs.append(np.median(imagt))
         else: avgs.append(np.mean(imagt))
+        #save standard deviation within each bin
+        if stdev: stdevs.append(np.std(imagt))
     endb2 = np.concatenate([np.array([0]),endb])
     #middle of phase bins
     mid = (endb2[1:]+endb2[:-1])/2
-    #for two phases
-    if double: return np.concatenate([mid,pd+mid]),np.concatenate([avgs,avgs])
+    
+    #mids, means, and stdevs for two phases
+    if stdev and double: return np.concatenate([mid,pd+mid]),np.concatenate([avgs,avgs]),np.concatenate([stdevs,stdevs])
+    #stdev but one phase
+    elif stdev: return mid,avgs,stdevs
+    #mids, meansfor two phases
+    elif double: return np.concatenate([mid,pd+mid]),np.concatenate([avgs,avgs])
     else: return mid,avgs
 
 #can consider def denseyear as separate function
+
+def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=True,retall=False,epoch=0,label=''):
+    '''Step function for phase-folded data
+    To do: ability to plot on input set of axes rather than creating new plot'''
+    #use mean phase to get middle values of bins and means in each bin
+    mid,avg,std = meanphase(iband,pd,pbins=pbins,det=det,med=med,double=double,stdev=True,epoch=epoch)
+    plt.step(mid,avg,where='mid',color=color,label=label)
+    #add errors as one sigma
+    if err: plt.errorbar(mid,avg,yerr=std,color=color,marker='',linestyle='none',alpha=0.4)
+    #flip y axis 
+    maxa,mina = np.max(avg),np.min(avg)
+    if err:
+        maxa += std[np.argmax(avg)]
+        mina -= std[np.argmin(avg)]
+    plt.ylim(maxa+.01,mina-.01)
+    plt.ylabel('I mag')
+    plt.xlabel('Phase (days)')
+    if retall and err: return mid,avg,std
+    elif retall: return mid,avg
+    else: return
     
     #return inds of densest year
 def finddense(tab,maxspace=20,retsample=False,retall=False):
@@ -558,6 +586,23 @@ def findpeaks(freq,power,retsorted=False,sigma=0,height=0.05,distance=30,div=2,p
     elif retsorted: return df_pow,peaks
     #default: just return peaks dictionary
     else: return df,peaks #either need df or use inds of peaks before returning
+    
+def aliasarr(arr,nrange=1,cutzero=True):
+    '''Find aliases above 1 (or given value mina) using array of periods
+    arr: array of period (peaks)
+    nrange: maximum n to use in alias calculation
+            n's used: -1*nrange to nrange'''
+    n = np.arange(-1*nrange,nrange+1) #includes zero so returned array will include periods passed in
+    #repeat range of n for # of periods passed in
+    nt = np.tile(n,(len(arr),1))
+    nt = np.swapaxes(nt,0,1)
+    a = np.tile(arr,(len(n),1))
+    farr = nt + 1/a 
+    parr = np.abs(1/farr)
+    #cut out array of original periods (from n=0)
+    if cutzero:
+        parr = np.concatenate([parr[:nrange],parr[nrange+1:]])
+    return parr
 
 def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=20,distance=30,minp=5,maxp=100,
                pbins=10,maxspace=20,plotpd=False,color='darkseagreen',top5=True,pkorder=False,samples=10):
@@ -827,3 +872,52 @@ def fit_sin(tt, yy,guess_freq=1/400.):
     f = w/(2.*np.pi)
     fitfunc = lambda t: A * np.sin(w*t + p) + c
     return {"amp": A, "omega": w, "phase": p, "offset": c, "freq": f, "period": 1./f, "fitfunc": fitfunc, "maxcov": np.max(pcov), "rawres": (guess,popt,pcov)}
+
+#-----------------------------------------------------------------SUMMARY TABLE--------------------------------------------------------------
+def addtotable(iband,vband,tab,num,interp):
+    '''Automatically update some columns of summary table'''
+    #row to update
+    row = tab[tab['src_n']==num]
+    #put in mean, stdev, max, min I and V band values
+    row['mean I'] = np.mean(iband['I mag'])
+    row['stdev I'] = np.std(iband['I mag'])
+    row['min I'] = np.min(iband['I mag'])
+    row['max I'] = np.max(iband['I mag'])
+    row['I range'] = row['max I'] - row['min I']
+    #repeat for V band
+    row['mean V'] = np.mean(vband['V mag'])
+    row['stdev V'] = np.std(vband['V mag'])
+    row['min V'] = np.min(vband['V mag'])
+    row['max V'] = np.max(vband['V mag'])
+    row['V range'] = row['max V'] - row['min V']
+    
+    #correlation coefficients for Iint vs. V-I and V vs. V-I 
+    icorr = np.corrcoef(vband['V mag']-interp,interp)[1][0]
+    row['I V-I corr'] = icorr
+    vcorr = np.corrcoef(vband['V mag']-interp,vband['V mag'])[1][0]
+    row['V V-I corr'] = vcorr
+    
+    #redder when brighter(update criteria as needed)
+    if icorr < -0.5 and vcorr < -0.5: row['redder when brighter'] = 'yes'
+    elif icorr > 0.5 and vcorr > -0.5: row['redder when brighter'] = 'no'
+    else: row['redder when brighter'] = 'check'
+        
+    #best fit lines to Iint vs. V-I and V vs. V-I 
+    vi = vband['V mag']-interp
+    imod = np.polyfit(vi,interp,1)
+    #use coefficients to make string of equation
+    #can decide if other format better and easier to use when pulling from table (e.g. breaking up into slope and int)
+    row['I V-I slope'] = imod[0]
+    row['I V-I int'] = imod[1] 
+    #can add full = True to np.polyfit to also get sum of squares of residuals
+    
+    vmod = np.polyfit(vi,vband['V mag'],1)
+    row['V V-I slope'] = vmod[0]
+    row['V V-I int'] = vmod[1] 
+
+    #update table
+    tab[tab['src_n']==num] = row
+    
+    #calculate I vs. V-I correlation to determine if redder when brighter
+    #for now, redder when brighter just based on I vs. V-I, not both
+    return 
