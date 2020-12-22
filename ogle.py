@@ -512,7 +512,7 @@ def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=T
     #add errors as one sigma
     if err: plt.errorbar(mid,avg,yerr=std,color=color,marker='',linestyle='none',alpha=0.4)
     #flip y axis 
-    maxa,mina = np.max(avg),np.min(avg)
+    maxa,mina = np.nanmax(avg),np.nanmin(avg)
     if err:
         maxa += std[np.argmax(avg)]
         mina -= std[np.argmin(avg)]
@@ -735,7 +735,7 @@ def denselcpd(tab,dense,orb=0,minp=5,maxp=100,figsize=(22,14),minpoints=30,color
     if onlybp: return bps,maxpows,np.array(stdate),np.array(endate)
     else: return bps,maxpows,sbp,spows,stdate,endate
 
-def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81):
+def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81,plotpd=False):
     '''One periodogram per year
     returns years (indices of year bounds) and list best periods'''
     #make tab for each year in LC
@@ -752,7 +752,7 @@ def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81):
         years.append(year)
         y+=1
     #make it easy by assuming max possible years and fill in
-    fig = plt.figure(figsize=(22,16))
+    if plotpd: fig = plt.figure(figsize=(22,16))
     bps = []
     p = 1
     for y in years:
@@ -760,9 +760,10 @@ def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81):
             if len(y)>window: detrend(y,window=window)
         freq,power,bp = periodogram(y,minp=minp,maxp=maxp,more=True,plot=False,det=det)
         bps.append(float(bp))
-        ax = fig.add_subplot(4,6,p)
-        ax.plot(1/freq,power,color='black')
-        if orb>0:ax.axvline(orb,color='darkseagreen',alpha=0.5)
+        if plotpd:
+            ax = fig.add_subplot(4,6,p)
+            ax.plot(1/freq,power,color='black')
+            if orb>0:ax.axvline(orb,color='darkseagreen',alpha=0.5)
         p+=1
     if plotbest:
         fig,ax = plt.subplots(1,1,figsize=(4,3))
@@ -776,6 +777,22 @@ def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81):
 #         ax1.set_ylabel('Residuals (Best - Est. Period)')
     return years,bps
 
+def rollpd(iband,npoint=200,nroll=20,det=False,minp=20,maxp=120,plot=False):
+    '''Perform LS periodogram on a rolling basis, i.e. move indices of search by nroll,
+    which is less than npoint (the number of points used in a search)'''
+    bps = []
+    ps = []
+    pows = []
+    st = 0
+    sts = []
+    while st+npoint<len(iband):
+        freq,power,bp = periodogram(iband[st:st+npoint],det=det,minp=minp,maxp=maxp,more=True,plot=plot)
+        ps.append(1/freq)
+        pows.append(power)
+        bps.append(float(bp))
+        sts.append(iband['MJD-50000'][st:st+1])
+        st+=nroll
+    return ps,pows,bps,sts
 
 def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
     Imag = tab['I mag']
