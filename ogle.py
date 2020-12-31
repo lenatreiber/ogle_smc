@@ -22,7 +22,7 @@ def sf(name,dpi=200,path='Figs/'):
 
 #initial LC, then color-mag, then a bunch of periodogram functions
 
-def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0):
+def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0,save=False,file=''):
     '''Uses table (cross) to make lists of I band and V band tables
     mult: tuple of multiples of orbital period to show
     offset: offset from beginning of light curve in days to use for zooms
@@ -119,7 +119,8 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
                 max1,min1 = np.max(zi1['I mag']),np.min(zi1['I mag'])
                 max2,min2 = np.max(zi2['I mag']),np.min(zi2['I mag'])
                 ax1.set_ylim(max1+.02,min1-.02)
-                ax2.set_ylim(max2+.02,min2-.02)     
+                ax2.set_ylim(max2+.02,min2-.02)  
+    if save: plt.savefig(file+'.png',dpi=200,bbox_inches='tight')
     if stack and both: return vstack(iband),vstack(vband)
     elif both: return iband,vband
     elif stack: return vstack(iband)
@@ -155,7 +156,7 @@ def gallery(cross,n=0,ctime=True,color='#CF6275',cmap='viridis'): #assumes sever
         c+=1
     return n
     
-def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,ctime=True,cmap='viridis',both=True):
+def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,ctime=True,cmap='viridis',both=True,save=False,file=''):
     '''Interpolates I band data at times of V band and then plots color-mag with best fit and corr coeff.
     Now assumes iband and vband are single tables, but can add option to vstack in function if needed.'''
     #interpolate I band
@@ -207,7 +208,8 @@ def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,cti
     if printcorr:
         #print correlation corr with interpolated I and V-I and then V and V-I
         print('I and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,i_interp)[1][0])
-        print('V and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,vband['V mag'])[1][0]) 
+        print('V and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,vband['V mag'])[1][0])
+    if save: plt.savefig(file+'.png',dpi=200,bbox_inches='tight')
     if retint or not plot: return i_interp
     else: return
 
@@ -215,7 +217,7 @@ def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,cti
 #-----------------------------------------------------------------PERIODOGRAMS--------------------------------------------------------------
 
 
-def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,plotdet=False,figsize=(12,4),plotpd=True):
+def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,plotdet=False,figsize=(12,4),plotpd=True,samples=10):
     '''Use known orbital period (or estimate) to inform detrending and periodogram.
     lower and upper subtracted/added onto orb to give periodogram bounds
     small detrending window default
@@ -224,6 +226,7 @@ def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,
         cut1: lower index of itab or itab[0] to use for periodogram
         cut2: upper index of itab or itab[0] to use for periodogram
     plotdet: plot detrended I mag used for periodogram
+    samples: samples per peak in periodogram
     
     TO DO: decide if separate pdgrams or on one plot better
             gridspec so that LC has more space
@@ -242,7 +245,7 @@ def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,
             tab = i
             #get pdgram results but don't plot within function
             #detrends within
-            freq, power, best_p = periodogram(tab,det=True,more=True,minp=orb-lower,maxp=orb+upper,plot=False,dodetrend=True,window=window)
+            freq, power, best_p = periodogram(tab,det=True,more=True,minp=orb-lower,maxp=orb+upper,plot=False,dodetrend=True,window=window,samples=samples)
             if plotpd:
                 ax[c].plot(1/freq,power,color='black')
                 #text with best period
@@ -461,12 +464,14 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
     return 
     #return tbp,bp2,np.mean(bps),obp
 
-def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch=0):
-    '''Compute mean mag in phase bins of LC'''
+def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch=0,divide=False):
+    '''Compute mean mag in phase bins of LC
+    divide: phase only goes to 1 or 2'''
     fr = tab.to_pandas() #don't modify tab
     #add epoch for phase shift
     fr['MJD-50000'] += epoch
     fr['phase'] = (fr['MJD-50000']%pd)
+    if divide: fr['phase'] /= pd
     fr = fr.sort_values(by='phase',ascending=True)
     #use detrended or regular imag
     if det: imag = fr['I detrend']
@@ -477,11 +482,13 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch
     #for now just one to do all the necessary filtering
     avgs = [] #list of average count rate in each phase bin
     stdevs = []
-    endb = np.arange(pd/pbins,pd+pd/pbins,pd/pbins)
+    if divide: endb = np.arange(1/pbins,1+1/pbins,1/pbins)
+    else: endb = np.arange(pd/pbins,pd+pd/pbins,pd/pbins)
     for p in endb:
         #phase in temporary df is less than phase in endb and more than the previous one
         tempfr = fr[fr['phase']<=p]
-        tempfr = tempfr[tempfr['phase']>p-pd/pbins]
+        if divide: tempfr = tempfr[tempfr['phase']>p-1/pbins]
+        else: tempfr = tempfr[tempfr['phase']>p-pd/pbins]
         if det: imagt = tempfr['I detrend']
         else: imagt = tempfr['I mag']
         #use median instead
@@ -498,6 +505,7 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch
     #stdev but one phase
     elif stdev: return mid,avgs,stdevs
     #mids, meansfor two phases
+    elif double and divide: return np.concatenate([mid,1+mid]),np.concatenate([avgs,avgs])
     elif double: return np.concatenate([mid,pd+mid]),np.concatenate([avgs,avgs])
     else: return mid,avgs
 
@@ -834,15 +842,17 @@ def detline(tab,st=0,end=-1,plot=False,figsize=(12,4),color='palevioletred',size
     return lindet
 
 
-def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,figsize=(4,3),plot=True,dodetrend=False,window=11,samples=10):
+def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,figsize=(4,3),plot=True,dodetrend=False,wfunc=False,window=11,samples=10):
     '''Perform and plot single LS periodogram.
-    Two different return options.'''
+    Two different return options.
+    wfunc: plot window function, so set all y to 1 in periodogram'''
     
     t = tab['MJD-50000']
     if dodetrend:
         #decide whether to actually modify tab or create copy just for periodogram
         detrend(tab,window=window)
-    if det: y = tab['I detrend']
+    if wfunc: y = 1
+    elif det: y = tab['I detrend']
     else: y = tab['I mag']
     dy = tab['I mag err']
     minf = 1./maxp
