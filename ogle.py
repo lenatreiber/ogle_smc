@@ -1,5 +1,4 @@
 
-#BETTER DOCUMENTATION COMING SOON
 
 from uncertainties import ufloat,unumpy
 from uncertainties.umath import *
@@ -16,6 +15,7 @@ import scipy.optimize
 import glob
 from astropy.table import Table,join,vstack,unique
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
+import wotan
 
 def sf(name,dpi=200,path='Figs/'):
     plt.savefig(path+name+'.png',dpi=dpi,bbox_inches='tight')
@@ -217,7 +217,7 @@ def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,cti
 #-----------------------------------------------------------------PERIODOGRAMS--------------------------------------------------------------
 
 
-def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,plotdet=False,figsize=(12,4),plotpd=True,samples=10):
+def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,plotdet=False,figsize=(12,4),plotpd=True,samples=10,spline=False,btol=50):
     '''Use known orbital period (or estimate) to inform detrending and periodogram.
     lower and upper subtracted/added onto orb to give periodogram bounds
     small detrending window default
@@ -244,10 +244,16 @@ def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,
             #to not modify itab?
             tab = i
             #get pdgram results but don't plot within function
-            #detrends within
-            freq, power, best_p = periodogram(tab,det=True,more=True,minp=orb-lower,maxp=orb+upper,plot=False,dodetrend=True,window=window,samples=samples)
+            #spline detrend
+            if spline:
+                splinedetrend(tab,window=window,btol=btol)
+                print('using rspline for detrending')
+            #detrends within if using Savitzky-Golay
+            dodet = not spline
+            freq, power, best_p = periodogram(tab,det=True,more=True,minp=orb-lower,maxp=orb+upper,plot=False,dodetrend=dodet,window=window,samples=samples)
             if plotpd:
                 ax[c].plot(1/freq,power,color='black')
+                ax[c].axvline(orb,color='darkseagreen',alpha=0.5)
                 #text with best period
                 minp,maxp = orb-lower,orb+upper
                 ax[c].text(minp+(maxp-minp)/2,0.8*np.max(power),f'{best_p:2f}')
@@ -271,9 +277,16 @@ def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,
         if cutdata:
             tab = itab[cut1:cut2]
         else: tab = itab
-        freq, power, best_p = periodogram(tab,det=True,more=True,minp=orb-lower,maxp=orb+upper,plot=False,dodetrend=True,window=window)
+        if spline:
+            splinedetrend(tab,window=window,btol=btol)
+            print('using rspline for detrending')
+        #detrends within if using Savitzky-Golay
+        dodet = not spline
+        freq, power, best_p = periodogram(tab,det=True,more=True,minp=orb-lower,maxp=orb+upper,plot=False,dodetrend=dodet,window=window)
         #print(best_p)
         if plotpd: ax.plot(1/freq,power,color='black')
+        #vertical line at established period
+        ax.axvline(orb,color='darkseagreen',alpha=0.5)
         #text with best period
         minp,maxp = orb-lower,orb+upper
         if plotpd: ax.text(minp+(maxp-minp)/2,0.8*np.max(power),f'{best_p:2f}')
@@ -286,12 +299,12 @@ def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,
             axd.set_ylim(maxmag+0.05,minmag-0.05)
         return best_p
         
-def window_loop(itab,orb,lower=10,upper=10,window=[11,31,51],cutdata=False,cut1=0,cut2=500,plotdet=False,figsize=(6,4),plotpd=False,plotloop=True):
+def window_loop(itab,orb,lower=10,upper=10,window=[11,31,51],cutdata=False,cut1=0,cut2=500,plotdet=False,figsize=(6,4),plotpd=False,plotloop=True,spline=False,btol=50):
     '''Use knownorb without plotting to try many window, cuts, etc. to see effect on best period
     TO DO: add options for other loops e.g. where data is cut, or upper and lower bounds'''
     bps = []
     for w in window:
-        best_p = knownorb(itab,orb,lower=lower,upper=upper,window=w,cutdata=cutdata,cut1=cut1,cut2=cut2,plotdet=plotdet,plotpd=plotpd)
+        best_p = knownorb(itab,orb,lower=lower,upper=upper,window=w,cutdata=cutdata,cut1=cut1,cut2=cut2,plotdet=plotdet,plotpd=plotpd,spline=spline,btol=btol)
         bps.append(best_p.value)
     
     if plotloop:
@@ -304,7 +317,8 @@ def window_loop(itab,orb,lower=10,upper=10,window=[11,31,51],cutdata=False,cut1=
 
 
 def pltphase(tab,best_p,freq,power,figsize=(6,4),inpd=True,inwin=False,wins=[],winpds=[],title='Largest Trend ',
-             size=2,ctime=False,cmap='magma',inloc='lower right',plotdet=False,avgph=True,mids=[],avgs=[],avgcolor='darkseagreen',save=False,srcnum=7):
+             size=2,ctime=False,cmap='magma',inloc='lower right',plotdet=False,avgph=True,mids=[],avgs=[],avgcolor='darkseagreen',
+             save=False,srcnum=7):
     '''Plot phase-folded data, with option to inset periodogram or window loop results'''
     fig,ax = plt.subplots(figsize=figsize)
     if inpd or inwin:
@@ -347,11 +361,15 @@ def pltphase(tab,best_p,freq,power,figsize=(6,4),inpd=True,inwin=False,wins=[],w
     return
 
 def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figsizebig=(6,4),plotloop=True,
-           cutlc=True,numcuts=10,ctime=False,cmap='magma',inloc='lower right',orb_bounds=(20,20),plotdet=True,pbins=20,saveall=False,srcnum=7,medlow=4):
+           cutlc=True,numcuts=10,ctime=False,cmap='magma',inloc='lower right',orb_bounds=(20,20),plotdet=True,
+           pbins=20,saveall=False,srcnum=7,medlow=4,spline=False,btol=50,win=201):
     '''Look for periodicity on three scales; detrending informed by results of each iteration
     Loop through reasonable range of detrending windows each time
     Pass in single tab (stacked or one og at a time to compare)
     Be sure to specify srcnum if saving figs
+    spline: use wotan rspline to detrend rather than Savitzky-Golay
+    win: window for spline or S-G detrending
+    
     TO DO 
     figure out better way to choose windows based on trend (use sampling)
     add power of window results as another dimension of window plot
@@ -378,10 +396,11 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
     if printall: print('Medium best period (without detrending): ',bp2)
 
     #several detrendings based on result of largest-scale trend
-    #TO DO: better range of windows
-    windows = np.arange(29,101,16)
+    #TO DO: best range of windows?
+    windows = np.arange(101,401,30)
     win_bool = plotloop and not plotphase
-    bps = window_loop(tab,orb,lower=(-medlow*orb)+orb,upper=tbp/2,window=windows,plotloop=win_bool,figsize=figsize)
+    #follows spline bool for detrending method
+    bps = window_loop(tab,orb,lower=-medlow*orb,upper=tbp/2,window=windows,plotloop=win_bool,figsize=figsize,spline=spline,btol=btol)
     if printall: print('Window results for medium: mean period ',np.mean(bps),' stdev: ',np.std(bps))
 
     if plotphase:
@@ -391,7 +410,9 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
         #pass in same power but not used since no periodogram inset
         #inset window loop 
         #may plot detrended
-        detrend(tab,window=81)
+        if spline: splinedetrend(tab,window=win,btol=50)
+            
+        else: detrend(tab,window=win)
         pltphase(tab,np.mean(bps),freq2,power2,figsize=figsizebig,inpd=False,inwin=True,wins=windows,winpds=bps,
                  title='Mean Medium Window Trend ',size=3,ctime=ctime,cmap=cmap,inloc=inloc,save=saveall,srcnum=srcnum,plotdet=plotdet)
    
@@ -432,30 +453,26 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
             ax.set_title('Search for Orbital Period on Chunks of LC')
             if saveall: plt.savefig('Figs/orbchunks'+str(srcnum)+'.png',dpi=200,bbox_inches='tight')
     #search on whole LC without detrending (before was else statement but including always)
-#     else:
     ofreq,opower,obp = periodogram(tab,more=True,minp=orb-orb_bounds[0],maxp=orb+orb_bounds[1],plot=per_bool,figsize=figsize)
     if printall: print('Small (orbital) best period (without detrending): ',obp)
     if plotphase:
         #plot phase-fold (and periodogram inset if plotpd) of non-detrended 
         #if plotdet: plot phase-folded detrended even though pdgram on non-det
-        if plotdet:
+        if plotdet and spline: splinedetrend(tab,window=win,btol=btol)
             #to do: allow for input of this window; determine more robustly
-            detrend(tab,window=71)
+        elif plotdet: detrend(tab,window=win)
         mid,avgs = meanphase(tab,obp,pbins=pbins,det=plotdet)
         pltphase(tab,obp,ofreq,opower,figsize=figsizebig,inpd=plotpd,title='Smallest Trend Without Detrending ',size=2,ctime=ctime,cmap=cmap,
                     inloc=inloc,plotdet=plotdet,avgph=True,mids=mid,avgs=avgs,save=saveall,srcnum=srcnum)
     #whether or not cutlc used, try various detrendings on full LC and plot phase-fold with mean (or known period?) and window plot
-    windows = np.arange(7,81,16)
-    obps = window_loop(tab,orb,lower=orb-orb_bounds[0],upper=orb+orb_bounds[1],window=windows,plotloop=win_bool,figsize=figsize)
+    windows = np.arange(81,201,16)
+    obps = window_loop(tab,orb,lower=orb_bounds[0],upper=orb_bounds[1],window=windows,plotloop=win_bool,figsize=figsize,spline=spline,btol=btol)
     if printall: print('Window results for small: mean period ',np.mean(obps),' stdev: ',np.std(obps))
 
     if plotphase:
         #plot phase fold with mean best period from window search
         #pass in same power but not used since no periodogram inset
         #inset window loop 
-        if plotdet:
-            #to do: allow for input of this window; determine more robustly
-            detrend(tab,window=81)
         omid,oavgs = meanphase(tab,np.mean(obps),pbins=pbins,det=plotdet)
         pltphase(tab,np.mean(obps),freq2,power2,figsize=figsizebig,inpd=False,inwin=True,wins=windows,winpds=obps,
                  title='Mean Small Window Trend ',size=3,ctime=ctime,cmap=cmap,inloc=inloc,plotdet=plotdet,avgph=True,
@@ -464,9 +481,12 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
     return 
     #return tbp,bp2,np.mean(bps),obp
 
-def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch=0,divide=False):
+    
+def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch=0,divide=False,sterr=False):
     '''Compute mean mag in phase bins of LC
-    divide: phase only goes to 1 or 2'''
+    divide: phase only goes to 1 or 2
+    sterr: return standard error (so divide stdev by square root of number of points in bin); stdev must also be True'''
+#     if sterr: stdev == True
     fr = tab.to_pandas() #don't modify tab
     #add epoch for phase shift
     fr['MJD-50000'] += epoch
@@ -495,13 +515,18 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch
         if med:avgs.append(np.median(imagt))
         else: avgs.append(np.mean(imagt))
         #save standard deviation within each bin
-        if stdev: stdevs.append(np.std(imagt))
+        if stdev and sterr: 
+        #if sterr, divide stdev by square root of number of points per bin
+            denom = np.sqrt(len(tempfr)) 
+            stdevs.append(np.std(imagt)/denom)
+        elif stdev: #stdev but not standard error
+            stdevs.append(np.std(imagt))
     endb2 = np.concatenate([np.array([0]),endb])
     #middle of phase bins
     mid = (endb2[1:]+endb2[:-1])/2
-    
     #mids, means, and stdevs for two phases
-    if stdev and double: return np.concatenate([mid,pd+mid]),np.concatenate([avgs,avgs]),np.concatenate([stdevs,stdevs])
+    if stdev and double and divide: return np.concatenate([mid,1+mid]),np.concatenate([avgs,avgs]),np.concatenate([stdevs,stdevs])
+    elif stdev and double: return np.concatenate([mid,pd+mid]),np.concatenate([avgs,avgs]),np.concatenate([stdevs,stdevs])
     #stdev but one phase
     elif stdev: return mid,avgs,stdevs
     #mids, meansfor two phases
@@ -511,11 +536,11 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch
 
 #can consider def denseyear as separate function
 
-def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=True,retall=False,epoch=0,label=''):
+def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=True,retall=False,epoch=0,divide=False,label=''):
     '''Step function for phase-folded data
     To do: ability to plot on input set of axes rather than creating new plot'''
     #use mean phase to get middle values of bins and means in each bin
-    mid,avg,std = meanphase(iband,pd,pbins=pbins,det=det,med=med,double=double,stdev=True,epoch=epoch)
+    mid,avg,std = meanphase(iband,pd,pbins=pbins,det=det,med=med,double=double,stdev=True,epoch=epoch,divide=divide)
     plt.step(mid,avg,where='mid',color=color,label=label)
     #add errors as one sigma
     if err: plt.errorbar(mid,avg,yerr=std,color=color,marker='',linestyle='none',alpha=0.4)
@@ -743,7 +768,7 @@ def denselcpd(tab,dense,orb=0,minp=5,maxp=100,figsize=(22,14),minpoints=30,color
     if onlybp: return bps,maxpows,np.array(stdate),np.array(endate)
     else: return bps,maxpows,sbp,spows,stdate,endate
 
-def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81,plotpd=False):
+def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81,plotpd=False,spline=False,btol=50):
     '''One periodogram per year
     returns years (indices of year bounds) and list best periods'''
     #make tab for each year in LC
@@ -764,7 +789,9 @@ def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81,plotpd=Fa
     bps = []
     p = 1
     for y in years:
-        if det:
+        if spline:
+            splinedetrend(y,window=window,btol=btol)
+        elif det:
             if len(y)>window: detrend(y,window=window)
         freq,power,bp = periodogram(y,minp=minp,maxp=maxp,more=True,plot=False,det=det)
         bps.append(float(bp))
@@ -816,6 +843,50 @@ def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
         plt.scatter(tab['MJD-50000'],tab['I mag'],color='black',label='original',s=size)
         plt.scatter(tab['MJD-50000'],tab['I detrend'],color='darkseagreen',label='detrended',s=size)
         plt.legend()
+        
+def splinedetrend(tab,window=201,btol=50):
+    '''Add detrended I mag as I detrend in table'''
+    flatten, trend = wotan.flatten(tab['MJD-50000'],tab['I mag'],method='rspline',window_length=window,break_tolerance=btol,return_trend=True)
+    #change nans to zeros -- but figure out way to ignore so as to not add false values to periodogram
+    trend[np.isnan(trend)] = 0
+    #add detrended column: original - trend + mean
+    mean = np.mean(tab['I mag'])
+    detr = tab['I mag'] - trend + mean
+    #replace outliers (more than a magnitude from mean) with mean
+    detr[np.abs(detr-mean)>1] = mean
+    tab['I detrend'] = detr
+        
+#spline detrending
+def splinesearch(srcn,minp=5,maxp=100,window=200,btol=50):
+    '''Load in light curve and plot; spline detrend, and search for orbital period'''
+    #get I and V LCs and plot
+    iband,vband = o.getIV(srcn,cross,plot=True,zooms=False,figsize=(8,4),mult=(3,8),offset=10,stack=True,save=False)
+    row = full[full['src_n']==srcn]
+    #established period
+    orb = float(row['Porb'])
+    print(f'established period: {orb}')
+    time = iband['MJD-50000']
+    flux = iband['I mag']
+    #detrend with rspline
+    flatten_lc1, trend_lc1 = wotan.flatten(
+    time,                 # Array of time values
+    flux,                 # Array of flux values
+    method='rspline',
+    window_length=200,    # The length of the filter window in units of ``time``
+    break_tolerance=50,  # Split into segments at breaks longer than that
+    return_trend=True,    # Return trend and flattened light curve
+    )
+    #plot trend used for detrending on LC
+    plt.plot(time, trend_lc1, color='red', linewidth=1, label='rspline')
+    #get rid of nans
+    for f in range(len(flatten_lc1)):
+        if np.isnan(flatten_lc1[f]): 
+            flatten_lc1[f] = 0
+            print('found nan... changing to zero')
+    #periodogram with detrended
+    iband['I detrend'] = flatten_lc1
+    o.periodogram(iband,det=True,minp=minp,maxp=maxp)
+    plt.axvline(orb,color='darkseagreen')
         
 def detline(tab,st=0,end=-1,plot=False,figsize=(12,4),color='palevioletred',size=5,addmean=True):
     '''Detrend I mag with linear fit
