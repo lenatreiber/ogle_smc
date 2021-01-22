@@ -16,21 +16,24 @@ import glob
 from astropy.table import Table,join,vstack,unique
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import wotan
+import scipy.stats as st
+
 
 def sf(name,dpi=200,path='Figs/'):
     plt.savefig(path+name+'.png',dpi=dpi,bbox_inches='tight')
 
 #initial LC, then color-mag, then a bunch of periodogram functions
 
-def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0,save=False,file=''):
+def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0,save=False,file='',radec=True,mlist=['OII I','OIII I']):
     '''Uses table (cross) to make lists of I band and V band tables
     mult: tuple of multiples of orbital period to show
     offset: offset from beginning of light curve in days to use for zooms
+    mlist: list of file names with masking in them; different for Part 2
     TO DO: add errors to plots'''
     #row of cross table using source number passed in
     crow = cross[cross['src_n']==num]
     #get RA and Dec to use in title
-    ra,dec = crow['RA_OGLE'][0],crow['DEC_OGLE'][0]
+    if radec: ra,dec = crow['RA_OGLE'][0],crow['DEC_OGLE'][0]
     #get orbital period
     if crow['Porb'].mask[0]: orb_bool=False
     else:
@@ -38,18 +41,21 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
         orb = crow['Porb'][0]
     #list of I band tables (length <=3)
     iband = []
-    for i in ['OII I','OIII I']:
+    for i in mlist:
         #doesn't work for OIV I since none are masked
         if not crow[i].mask[0]: #if there's a file (not masked)
             #read in table as temporary tab
             tab = Table.read(crow[i][0],format='ascii',names=['MJD-50000','I mag','I mag err'])
             #add tab to list of I band tables
-            iband.append(tab)
+            if len(tab)>0: iband.append(tab)
+            else: print(f'empty file for {i}')
         else: 
             if printall: print('no file for '+I)
     #append OIV I band
-    tab = Table.read(crow['OIV I'][0],format='ascii',names=['MJD-50000','I mag','I mag err'])
-    iband.append(tab)
+    if len(mlist)<3:
+        tab = Table.read(crow['OIV I'][0],format='ascii',names=['MJD-50000','I mag','I mag err'])
+        if len(tab)>0: iband.append(tab)
+        else: print(f'empty file for OIV I')
     
     #repeat for V band if both
     if both: 
@@ -59,7 +65,8 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
                 #read in table as temporary tab
                 tab = Table.read(crow[v][0],format='ascii',names=['MJD-50000','V mag','V mag err'])
                 #add tab to list of I band tables
-                vband.append(tab)
+                if len(tab)>0: vband.append(tab)
+                else: print(f'empty file for {v}')
         #return lists of I band and V band tables
 
     if plot:
@@ -170,8 +177,8 @@ def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,cti
         else: 
             fig,ax = plt.subplots(1,1,figsize=figsize)
             axlist = [ax]
-        #approximate interpolated I errors as maximum I band error
-        ie = np.ones(len(i_interp))*np.max(iband['I mag err'])
+        #approximate interpolated I errors as median I band error (was using max but could be issue w/outliers)
+        ie = np.ones(len(i_interp))*np.median(iband['I mag err'])
         #propagate errors to get error on V-I points
         verr = unumpy.uarray(vband['V mag'],vband['V mag err'])
         ierr = unumpy.uarray(i_interp,ie)
@@ -536,11 +543,11 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch
 
 #can consider def denseyear as separate function
 
-def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=True,retall=False,epoch=0,divide=False,label=''):
+def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=True,retall=False,epoch=0,sterr=True,divide=False,label=''):
     '''Step function for phase-folded data
     To do: ability to plot on input set of axes rather than creating new plot'''
     #use mean phase to get middle values of bins and means in each bin
-    mid,avg,std = meanphase(iband,pd,pbins=pbins,det=det,med=med,double=double,stdev=True,epoch=epoch,divide=divide)
+    mid,avg,std = meanphase(iband,pd,pbins=pbins,det=det,med=med,double=double,stdev=True,sterr=sterr,epoch=epoch,divide=divide)
     plt.step(mid,avg,where='mid',color=color,label=label)
     #add errors as one sigma
     if err: plt.errorbar(mid,avg,yerr=std,color=color,marker='',linestyle='none',alpha=0.4)
@@ -646,6 +653,8 @@ def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=
     meanp: include mean phase on plots
     pbins: number of phase bins for meanphase
     top3: only takes top three peaks
+    
+    TO DO: add detrend option
     '''
     if dense:
         dinds = finddense(tab,maxspace=maxspace)
@@ -768,7 +777,7 @@ def denselcpd(tab,dense,orb=0,minp=5,maxp=100,figsize=(22,14),minpoints=30,color
     if onlybp: return bps,maxpows,np.array(stdate),np.array(endate)
     else: return bps,maxpows,sbp,spows,stdate,endate
 
-def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81,plotpd=False,spline=False,btol=50):
+def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81,plotpd=False,spline=False,btol=50,sects=365):
     '''One periodogram per year
     returns years (indices of year bounds) and list best periods'''
     #make tab for each year in LC
@@ -776,11 +785,11 @@ def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81,plotpd=Fa
     stdate = iband['MJD-50000'][0]
     endate = iband['MJD-50000'][-1]
     y = 1
-    while y < int((endate-stdate)/365)+1:
+    while y < int((endate-stdate)/sects)+1:
         #less than next year
-        year = iband[iband['MJD-50000']<stdate+365*y]
+        year = iband[iband['MJD-50000']<stdate+sects*y]
         #also more than previous
-        year = year[year['MJD-50000']>stdate+365*(y-1)]
+        year = year[year['MJD-50000']>stdate+sects*(y-1)]
 
         years.append(year)
         y+=1
@@ -844,7 +853,7 @@ def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
         plt.scatter(tab['MJD-50000'],tab['I detrend'],color='darkseagreen',label='detrended',s=size)
         plt.legend()
         
-def splinedetrend(tab,window=201,btol=50):
+def splinedetrend(tab,window=201,btol=50,retspline=False):
     '''Add detrended I mag as I detrend in table'''
     flatten, trend = wotan.flatten(tab['MJD-50000'],tab['I mag'],method='rspline',window_length=window,break_tolerance=btol,return_trend=True)
     #change nans to zeros -- but figure out way to ignore so as to not add false values to periodogram
@@ -855,12 +864,14 @@ def splinedetrend(tab,window=201,btol=50):
     #replace outliers (more than a magnitude from mean) with mean
     detr[np.abs(detr-mean)>1] = mean
     tab['I detrend'] = detr
-        
+    if retspline:
+        return flatten,trend
 #spline detrending
-def splinesearch(srcn,minp=5,maxp=100,window=200,btol=50):
+def splinesearch(srcn,cross,full,minp=5,maxp=100,det=True,window=200,btol=50,phase=True,color='black',ylim=.06,close=False,mlist=['OII I','OIII I']):
     '''Load in light curve and plot; spline detrend, and search for orbital period'''
     #get I and V LCs and plot
-    iband,vband = o.getIV(srcn,cross,plot=True,zooms=False,figsize=(8,4),mult=(3,8),offset=10,stack=True,save=False)
+    plot = not close
+    iband,vband = getIV(srcn,cross,plot=plot,zooms=False,figsize=(8,4),mult=(3,8),offset=10,stack=True,save=False,mlist=mlist)
     row = full[full['src_n']==srcn]
     #established period
     orb = float(row['Porb'])
@@ -868,25 +879,33 @@ def splinesearch(srcn,minp=5,maxp=100,window=200,btol=50):
     time = iband['MJD-50000']
     flux = iband['I mag']
     #detrend with rspline
-    flatten_lc1, trend_lc1 = wotan.flatten(
-    time,                 # Array of time values
-    flux,                 # Array of flux values
-    method='rspline',
-    window_length=200,    # The length of the filter window in units of ``time``
-    break_tolerance=50,  # Split into segments at breaks longer than that
-    return_trend=True,    # Return trend and flattened light curve
-    )
-    #plot trend used for detrending on LC
-    plt.plot(time, trend_lc1, color='red', linewidth=1, label='rspline')
-    #get rid of nans
-    for f in range(len(flatten_lc1)):
-        if np.isnan(flatten_lc1[f]): 
-            flatten_lc1[f] = 0
-            print('found nan... changing to zero')
+    flatten_lc1,trend_lc1 = splinedetrend(iband,window=window,btol=btol,retspline=True)
+    plt.plot(time, trend_lc1, color='black', linewidth=1, label='rspline')
+    if close: plt.close()
     #periodogram with detrended
-    iband['I detrend'] = flatten_lc1
-    o.periodogram(iband,det=True,minp=minp,maxp=maxp)
+    if det: 
+        bp = periodogram(iband,det=True,minp=minp,maxp=maxp)
+        mag = 'I detrend'
+    #periodogram without detrending:
+    else: 
+        bp = periodogram(iband,det=False,minp=minp,maxp=maxp)
+        mag = 'I mag'
     plt.axvline(orb,color='darkseagreen')
+    if close: plt.close()
+    #phase-fold detrended I band with best period
+    if phase and not close:
+        plt.figure(figsize=(7,5))
+        plt.scatter((iband['MJD-50000']%bp)/bp,iband[mag],color=color,alpha=0.5)
+        plt.scatter(1+(iband['MJD-50000']%bp)/bp,iband[mag],color=color,alpha=0.5)
+        medi = np.median(iband[mag])
+        mid,avg,err = meanphase(iband,bp,pbins=16,det=True,double=True,stdev=True,epoch=0,divide=True,sterr=True)
+        plt.step(mid,avg,color='black',where='mid')
+        plt.errorbar(mid,avg,color='black',yerr=err,ls='none')
+        plt.ylim(medi+ylim,medi-ylim)
+        plt.ylabel('I mag',fontsize=14)
+        plt.xlabel(f'Phase ({bp:.2f}d)',fontsize=14)
+        if close: plt.close()
+    return iband,vband,bp
         
 def detline(tab,st=0,end=-1,plot=False,figsize=(12,4),color='palevioletred',size=5,addmean=True):
     '''Detrend I mag with linear fit
@@ -948,6 +967,121 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
         return freq, power, 1/best_freq
     else:
         return 1/best_freq
+#-----------------------------------------------------------------FITTING PHASE-FOLD----------------------------------------------------------
+def combine(srcn,cross,full,iband=[],pbins=16,det=True,pd=0,window=200,btol=50,minp=5,maxp=100,testbins=True,retstep=False,close=False,mlist=['OII I','OIII I']):
+    #LC, detrend, and spline search
+    if len(iband)==0: #if iband passed in, don't need to do splinesearch (but bp should then be >0 as well)
+        iband,vband,bp = splinesearch(srcn,cross,full,close=close,minp=minp,maxp=maxp,det=det,window=window,btol=btol,phase=True,color=pink,ylim=.08,mlist=mlist)
+    #option to override bp with argument
+    if pd > 0: bp = pd
+    #analyze phase-folded data with best period, yielding dictionary
+    plot = not close
+    mid,avg,err,pdict = phase_dict(iband,bp,pbins,det=det,retstep=True,plotsymm=plot,close=close)
+    if testbins: bindf = test_bins(iband,bp)
+    if retstep: return mid,avg,err,pdict
+    else: return pdict
+
+def phase_dict(iband,pd,pbins,det=True,retstep=False,plotsymm=True,close=False):
+    '''phase-fold all data and add amp, phase diff, phase max, phase min, shape, and diff sum to dictionary
+    note: max and min are in mags, so phase max is phase bin # of faintest bin
+    to do:  decide whether to convert to increasing from zero right away
+    '''
+    #initialize dictionary for properties of phase-folded data
+    pdict = {}
+    mid,avg,err = phasestep(iband,pd,pbins,det=det,med=False,double=True,color='black',err=True,retall=True,epoch=0,divide=True,label='')
+    if close: plt.close()
+    #put in period for global analysis
+    pdict['period'] = pd
+    #calculate range
+    pdict['amp'] = np.max(avg) - np.min(avg)
+    #phase bin # of max and min bins
+    maxp = np.where(avg == np.max(avg))[0][0] 
+    minp = np.where(avg == np.min(avg))[0][0] 
+    pdict['phase diff'] = (maxp-minp)/pbins
+    if pdict['phase diff'] < 0:
+        pdict['phase diff'] = 1+pdict['phase diff']
+    pdict['phase max'] = mid[avg==np.max(avg)][0]
+    pdict['phase min'] = mid[avg==np.min(avg)][0]
+    #case 1 for FRED
+    if pdict['phase diff']>0.5 and maxp>minp:
+        pdict['shape'] = 'FRED'
+    #case 2
+    elif pdict['phase diff']<0.5 and maxp<minp:
+        pdict['shape'] = 'FRED'
+    else:
+        #other shape: sine or symm?
+        pdict['shape'] = 'not FRED'
+    #redefine to use increasing numbers, start at 0 (decide whether to do this right away)
+    diff = np.max(avg) - avg
+    pdict['diff mean'] = np.mean(diff) #can compare mean to amp etc.; not dependent on I mag
+    pdict['mean'] = np.mean(avg) #allows for luminosity correlations
+    #whether diff or original avg used in skew just flips sign; kurtosis the same either way
+#     print('remember skew flipped b/c of magnitudes')
+#     print('so positive skew has asymmetry toward (more) low values = bright values')
+    pdict['skew'] = st.skew(avg)
+    pdict['kurtosis'] = st.kurtosis(avg)
+    #adds symmetry sum to dictionary
+    plt.figure(figsize=(5,4))
+    summ = symm(mid,avg,err,pdict,pbins=pbins,plot=plotsymm)
+    #add mean (standard) error
+    pdict['mean err'] = np.mean(err)
+    if retstep:
+        return mid,avg,err,pdict
+    else: return pdict
+    
+def symm(mid,avg,err,pdict,pbins=16,ylim=.01,square=False,plot=False):
+    '''Fold over maximum; subtract and return sum of squares
+    To do:  add propagation of standard error
+            option to divide by some number (max in the bin? amplitude?)'''
+    #roll data s.t. peak is at phase 0.5 --> makes fold easier
+    roll = int(pbins/2) - int(float(pdict['phase min']*pbins-0.5))
+    ravg = np.roll(avg,roll)
+    rerr = np.roll(err,roll)
+    sums = []
+    st = pbins - 1
+    if not plot: plt.close()
+    for i in range(int(pbins/2)-1):
+        sums.append(ravg[i]-ravg[st-i])
+        if plot:
+            plt.step(mid,ravg,color='black',where='mid')
+            plt.errorbar(mid,ravg,yerr=rerr,ls='none',color='grey',alpha=0.5)
+            maxa,mina = np.nanmax(avg),np.nanmin(avg)
+            plt.ylim(maxa+.01,mina-.01)
+            plt.scatter(mid[i],ravg[st-i],color=pink)
+            plt.scatter(mid[st-i],ravg[st-i],color='darkseagreen')
+    sums = np.array(sums)
+    if square: 
+        pdict['symm sum'] = np.sum(sums**2)
+        return np.sum(sums**2)
+    else: 
+        #'sum' but really an mean difference when folded in half around peak
+        pdict['symm sum'] = np.abs(np.mean(sums))
+        return np.sum(sums)
+    
+def test_bins(iband,bp,bins=np.arange(10,100,10),plot=True):
+    bindf = pd.DataFrame(columns=['bins','amp','phase diff','phase max','phase min','shape',
+                             'diff mean','mean','skew','kurtosis','symm sum','mean err'])
+    bindf['bins'] = bins
+    for b in bins:
+        #temporary dictionary
+        tdict = phase_dict(iband,bp,b,plotsymm=False)
+        for d in list(tdict.keys()):
+            row = bindf[bindf['bins']==b]
+            row[d] = tdict[d]
+            bindf[bindf['bins']==b] = row
+    if plot:
+        fig = plt.figure(figsize=(14,10))
+        c = 1
+        for r in ['phase diff','phase max','phase min','diff mean','mean','skew','kurtosis','symm sum','mean err']:
+            ax = fig.add_subplot(3,3,c)
+            ax.scatter(bindf['bins'],bindf[r],color='darkseagreen')
+            ax.set_ylabel(r)
+            if c==1:
+                ax.set_xlabel('# phase bins')
+            c+=1
+        plt.subplots_adjust(wspace=0.3)
+    #return df with row per #bins
+    return bindf
 #-----------------------------------------------------------------FLARE-FITTING--------------------------------------------------------------
 
     
