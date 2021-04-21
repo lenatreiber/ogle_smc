@@ -1,5 +1,3 @@
-
-
 from uncertainties import ufloat,unumpy
 from uncertainties.umath import *
 import math
@@ -24,7 +22,7 @@ def sf(name,dpi=200,path='Figs/'):
 
 #initial LC, then color-mag, then a bunch of periodogram functions
 
-def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0,save=False,file='',radec=True,mlist=['OII I','OIII I']):
+def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0,save=False,file='',radec=True,mlist=['OII I','OIII I'],calib=False):
     '''Uses table (cross) to make lists of I band and V band tables
     mult: tuple of multiples of orbital period to show
     offset: offset from beginning of light curve in days to use for zooms
@@ -50,7 +48,7 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
             if len(tab)>0: iband.append(tab)
             else: print(f'empty file for {i}')
         else: 
-            if printall: print('no file for '+I)
+            if printall: print('no file for '+i)
     #append OIV I band
     if len(mlist)<3:
         tab = Table.read(crow['OIV I'][0],format='ascii',names=['MJD-50000','I mag','I mag err'])
@@ -68,11 +66,22 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
                 if len(tab)>0: vband.append(tab)
                 else: print(f'empty file for {v}')
         #return lists of I band and V band tables
-
+    #compensate for uncalibrated data by setting epochs to a common median, which is the overall median
+    #V band unchanged
+    if calib:
+        itemp = vstack(iband)
+        med = np.median(itemp['I mag'])
+        for i in iband:
+            #calculate current median
+            cmed = np.median(i['I mag'])
+            #difference between current and target median
+            dmeds = med-cmed
+            #add difference to all points
+            i['I mag'] += dmeds
     if plot:
         #stack for ease
         ib = vstack(iband)
-        vb = vstack(vband)
+        if both: vb = vstack(vband)
 
         #plot both full LC and two levels of zoom-in
         if zooms:
@@ -85,15 +94,17 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
         ax.scatter(ib['MJD-50000'],ib['I mag'],color='#CF6275',s=size,label='I band')
         maxmag = np.max(ib['I mag'])
         minmag = np.min(ib['I mag'])
-        ax.scatter(vb['MJD-50000'],vb['V mag'],color='navy',s=size,label='V band')
-        if np.max(vb['V mag'])>maxmag: 
-            maxmag = np.max(vb['V mag'])
-        if np.min(vb['V mag'])<minmag: 
-            minmag = np.min(vb['V mag'])
+        if both:
+            ax.scatter(vb['MJD-50000'],vb['V mag'],color='navy',s=size,label='V band')
+            if np.max(vb['V mag'])>maxmag: 
+                maxmag = np.max(vb['V mag'])
+            if np.min(vb['V mag'])<minmag: 
+                minmag = np.min(vb['V mag'])
         ax.set_xlabel('MJD-50000',fontsize=14)
         ax.set_ylabel('OGLE mag',fontsize=14)
         ax.set_ylim(maxmag+.05,minmag-.05)
-        ax.set_title('Source #'+str(num)+' RA: '+str(ra)+' Dec: '+str(dec))
+        if radec: ax.set_title('Source #'+str(num)+' RA: '+str(ra)+' Dec: '+str(dec))
+        else: ax.set_title('Source #'+str(num))
         ax.legend()
         if zooms: #for now just plots I band
             #ax1 zoom is hundreds of days
@@ -614,13 +625,14 @@ def findpeaks(freq,power,retsorted=False,sigma=0,height=0.05,distance=30,div=2,p
     #sort peaks by power and return
     if pkorder:
         #data frame of peaks
-        pf = pd.DataFrame(columns=['period','power'])
+        pf = pd.DataFrame(columns=['period','power','ind'])
         pers = []
-        for p in peaks[0]: #indexing only working with loop
-            pers.append(float(df[p:p+1]['period']))
+        pers = np.array(df.loc[peaks[0]]['period'])
         pf['period'] = pers
+        pf['ind'] = peaks[0]
         pf['power'] = peaks[1]['peak_heights']
         pf = pf.sort_values(by='power',ascending=False)
+        pf.index = np.arange(len(pf))
         return pf
     #return DataFrame sorted by power and peaks dictionary
     elif retsorted: return df_pow,peaks
@@ -643,6 +655,10 @@ def aliasarr(arr,nrange=1,cutzero=True):
     if cutzero:
         parr = np.concatenate([parr[:nrange],parr[nrange+1:]])
     return parr
+
+def findbeat(p1,p2):
+    '''Return beat period given two periods'''
+    return 1/np.abs(1/p1 - 1/p2)
 
 def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=20,distance=30,minp=5,maxp=100,
                pbins=10,maxspace=20,plotpd=False,color='darkseagreen',top5=True,pkorder=False,samples=10):
@@ -821,7 +837,7 @@ def yrpd(iband,minp=5,maxp=100,orb=0,plotbest=True,det=False,window=81,plotpd=Fa
 #         ax1.set_ylabel('Residuals (Best - Est. Period)')
     return years,bps
 
-def rollpd(iband,npoint=200,nroll=20,det=False,minp=20,maxp=120,plot=False):
+def rollpd(iband,npoint=200,nroll=20,det=False,minp=20,maxp=120,plot=False,plotbest=True):
     '''Perform LS periodogram on a rolling basis, i.e. move indices of search by nroll,
     which is less than npoint (the number of points used in a search)'''
     bps = []
@@ -829,13 +845,21 @@ def rollpd(iband,npoint=200,nroll=20,det=False,minp=20,maxp=120,plot=False):
     pows = []
     st = 0
     sts = []
+    maxps = []
     while st+npoint<len(iband):
         freq,power,bp = periodogram(iband[st:st+npoint],det=det,minp=minp,maxp=maxp,more=True,plot=plot)
         ps.append(1/freq)
         pows.append(power)
+        maxps.append(np.max(power))
         bps.append(float(bp))
         sts.append(iband['MJD-50000'][st:st+1])
         st+=nroll
+    if plotbest:
+        plt.figure(figsize=(5,4))
+        plt.scatter(sts,bps,c=maxps)
+        plt.colorbar(label='LS Power')
+        plt.xlabel('Start Date (MJD-50000)')
+        plt.ylabel('Best Period')
     return ps,pows,bps,sts
 
 def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
@@ -854,7 +878,8 @@ def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
         plt.legend()
         
 def splinedetrend(tab,window=201,btol=50,retspline=False):
-    '''Add detrended I mag as I detrend in table'''
+    '''Add detrended I mag as I detrend in table
+    retspline (bool): return flatten, trend from wotan.flatten'''
     flatten, trend = wotan.flatten(tab['MJD-50000'],tab['I mag'],method='rspline',window_length=window,break_tolerance=btol,return_trend=True)
     #change nans to zeros -- but figure out way to ignore so as to not add false values to periodogram
     trend[np.isnan(trend)] = 0
@@ -866,12 +891,14 @@ def splinedetrend(tab,window=201,btol=50,retspline=False):
     tab['I detrend'] = detr
     if retspline:
         return flatten,trend
+    
 #spline detrending
-def splinesearch(srcn,cross,full,minp=5,maxp=100,det=True,window=200,btol=50,phase=True,color='black',ylim=.06,close=False,mlist=['OII I','OIII I']):
+def splinesearch(srcn,cross,full,minp=5,maxp=100,det=True,window=200,both=True,btol=50,phase=True,color='black',ylim=.06,close=False,mlist=['OII I','OIII I'],calib=False):
     '''Load in light curve and plot; spline detrend, and search for orbital period'''
     #get I and V LCs and plot
     plot = not close
-    iband,vband = getIV(srcn,cross,plot=plot,zooms=False,figsize=(8,4),mult=(3,8),offset=10,stack=True,save=False,mlist=mlist)
+    if both:iband,vband = getIV(srcn,cross,plot=plot,zooms=False,both=both,figsize=(8,4),mult=(3,8),offset=10,stack=True,save=False,mlist=mlist,calib=calib)
+    else:iband = getIV(srcn,cross,plot=plot,zooms=False,both=both,figsize=(8,4),mult=(3,8),offset=10,stack=True,save=False,mlist=mlist,calib=calib)
     row = full[full['src_n']==srcn]
     #established period
     orb = float(row['Porb'])
@@ -898,14 +925,15 @@ def splinesearch(srcn,cross,full,minp=5,maxp=100,det=True,window=200,btol=50,pha
         plt.scatter((iband['MJD-50000']%bp)/bp,iband[mag],color=color,alpha=0.5)
         plt.scatter(1+(iband['MJD-50000']%bp)/bp,iband[mag],color=color,alpha=0.5)
         medi = np.median(iband[mag])
-        mid,avg,err = meanphase(iband,bp,pbins=16,det=True,double=True,stdev=True,epoch=0,divide=True,sterr=True)
+        mid,avg,err = meanphase(iband,bp,pbins=16,det=det,double=True,stdev=True,epoch=0,divide=True,sterr=True)
         plt.step(mid,avg,color='black',where='mid')
         plt.errorbar(mid,avg,color='black',yerr=err,ls='none')
         plt.ylim(medi+ylim,medi-ylim)
         plt.ylabel('I mag',fontsize=14)
         plt.xlabel(f'Phase ({bp:.2f}d)',fontsize=14)
         if close: plt.close()
-    return iband,vband,bp
+    if both: return iband,vband,bp
+    else: return iband,bp
         
 def detline(tab,st=0,end=-1,plot=False,figsize=(12,4),color='palevioletred',size=5,addmean=True):
     '''Detrend I mag with linear fit
@@ -932,7 +960,7 @@ def detline(tab,st=0,end=-1,plot=False,figsize=(12,4),color='palevioletred',size
     return lindet
 
 
-def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,figsize=(4,3),plot=True,dodetrend=False,wfunc=False,window=11,samples=10):
+def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,figsize=(4,3),plot=True,dodetrend=False,wfunc=False,window=11,samples=10,color='black'):
     '''Perform and plot single LS periodogram.
     Two different return options.
     wfunc: plot window function, so set all y to 1 in periodogram'''
@@ -944,7 +972,7 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
     if wfunc: y = 1
     elif det: y = tab['I detrend']
     else: y = tab['I mag']
-    dy = tab['I mag err']
+#     dy = tab['I mag err']
     minf = 1./maxp
     maxf = 1./minp
     ls = LombScargle(t, y)
@@ -958,7 +986,7 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
 
     if plot:
         fig = plt.figure(figsize=figsize)
-        plt.plot(1/freq,power,color='black')
+        plt.plot(1/freq,power,color=color)
         plt.xlabel('Period',fontsize=14)
         plt.ylabel('Power',fontsize=14)
         #put text with best period
@@ -971,7 +999,7 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
 def combine(srcn,cross,full,iband=[],pbins=16,det=True,pd=0,window=200,btol=50,minp=5,maxp=100,testbins=True,retstep=False,close=False,mlist=['OII I','OIII I']):
     #LC, detrend, and spline search
     if len(iband)==0: #if iband passed in, don't need to do splinesearch (but bp should then be >0 as well)
-        iband,vband,bp = splinesearch(srcn,cross,full,close=close,minp=minp,maxp=maxp,det=det,window=window,btol=btol,phase=True,color=pink,ylim=.08,mlist=mlist)
+        iband,vband,bp = splinesearch(srcn,cross,full,close=close,minp=minp,maxp=maxp,det=det,window=window,btol=btol,phase=True,color='black',ylim=.08,mlist=mlist)
     #option to override bp with argument
     if pd > 0: bp = pd
     #analyze phase-folded data with best period, yielding dictionary
@@ -988,20 +1016,20 @@ def phase_dict(iband,pd,pbins,det=True,retstep=False,plotsymm=True,close=False):
     '''
     #initialize dictionary for properties of phase-folded data
     pdict = {}
-    mid,avg,err = phasestep(iband,pd,pbins,det=det,med=False,double=True,color='black',err=True,retall=True,epoch=0,divide=True,label='')
-    if close: plt.close()
+    if close: mid,avg,err = meanphase(iband,pd,pbins,det=det,med=False,double=True,stdev=True,sterr=True,divide=True)
+    else: mid,avg,err = phasestep(iband,pd,pbins,det=det,med=False,double=True,color='black',err=True,retall=True,epoch=0,divide=True,label='')
     #put in period for global analysis
     pdict['period'] = pd
     #calculate range
     pdict['amp'] = np.max(avg) - np.min(avg)
     #phase bin # of max and min bins
-    maxp = np.where(avg == np.max(avg))[0][0] 
-    minp = np.where(avg == np.min(avg))[0][0] 
+    maxp = np.where(avg == np.nanmax(avg))[0][0] 
+    minp = np.where(avg == np.nanmin(avg))[0][0] 
     pdict['phase diff'] = (maxp-minp)/pbins
     if pdict['phase diff'] < 0:
         pdict['phase diff'] = 1+pdict['phase diff']
-    pdict['phase max'] = mid[avg==np.max(avg)][0]
-    pdict['phase min'] = mid[avg==np.min(avg)][0]
+    pdict['phase max'] = mid[avg==np.nanmax(avg)][0]
+    pdict['phase min'] = mid[avg==np.nanmin(avg)][0]
     #case 1 for FRED
     if pdict['phase diff']>0.5 and maxp>minp:
         pdict['shape'] = 'FRED'
@@ -1047,7 +1075,7 @@ def symm(mid,avg,err,pdict,pbins=16,ylim=.01,square=False,plot=False):
             plt.errorbar(mid,ravg,yerr=rerr,ls='none',color='grey',alpha=0.5)
             maxa,mina = np.nanmax(avg),np.nanmin(avg)
             plt.ylim(maxa+.01,mina-.01)
-            plt.scatter(mid[i],ravg[st-i],color=pink)
+            plt.scatter(mid[i],ravg[st-i],color='palevioletred')
             plt.scatter(mid[st-i],ravg[st-i],color='darkseagreen')
     sums = np.array(sums)
     if square: 
@@ -1105,9 +1133,9 @@ def fit_sin(tt, yy,guess_freq=1/400.):
     fitfunc = lambda t: A * np.sin(w*t + p) + c
     return {"amp": A, "omega": w, "phase": p, "offset": c, "freq": f, "period": 1./f, "fitfunc": fitfunc, "maxcov": np.max(pcov), "rawres": (guess,popt,pcov)}
 
-#-----------------------------------------------------------------SUMMARY TABLE--------------------------------------------------------------
-def addtotable(iband,vband,tab,num,interp):
-    '''Automatically update some columns of summary table'''
+def addtotable(iband,vband,tab,num,interp,flag=False,det_std=0,det_iqr=0):
+    '''Automatically update some columns of summary table
+    flag: add 1 to calibration flag'''
     #row to update
     row = tab[tab['src_n']==num]
     #put in mean, stdev, max, min I and V band values
@@ -1146,6 +1174,17 @@ def addtotable(iband,vband,tab,num,interp):
     vmod = np.polyfit(vi,vband['V mag'],1)
     row['V V-I slope'] = vmod[0]
     row['V V-I int'] = vmod[1] 
+    
+    if flag: row['calibration flag'] = 1
+    if det_std>0:
+        row['det stdev I'] = det_std
+        row['det stdev/I range'] = det_std/row['I range']
+        #in this case, also update base num
+        bn = (np.max(iband['I mag'])-np.median(iband['I mag']))-(np.median(iband['I mag'])-np.min(iband['I mag']))
+        row['base num'] = bn
+    if det_iqr>0:
+        row['det I IQR'] = det_iqr
+        
 
     #update table
     tab[tab['src_n']==num] = row
@@ -1153,3 +1192,310 @@ def addtotable(iband,vband,tab,num,interp):
     #calculate I vs. V-I correlation to determine if redder when brighter
     #for now, redder when brighter just based on I vs. V-I, not both
     return 
+
+def strictly_increasing(L):
+    return all(x<y for x, y in zip(L, L[1:]))
+
+def strictly_decreasing(L):
+    return all(x>y for x, y in zip(L, L[1:]))
+
+def non_increasing(L):
+    return all(x>=y for x, y in zip(L, L[1:]))
+
+def non_decreasing(L):
+    return all(x<=y for x, y in zip(L, L[1:]))
+
+def monotonic(L,retwhich=False):
+    inc,dec = False,False
+    if non_increasing(L): dec = True
+    if non_decreasing(L): inc = True
+    if retwhich: return (inc or dec), inc #returns monotonic bool followed by bool for increasing
+    else: return inc or dec
+    
+def cut(srcn,cross,cross2,mlist1,mlist2,cut=10,npoints=False,time=False,minp=1,retstd=True,retrange=False,calib=False,plot=True,text=False,statistic='median',glob=False,retsplit=False,window=200): #decide whether to do fixed chunks or fixed factor chunks or fixed number of points
+    '''Divide LC into chunks and find median in each
+    Division can be by number of points per piece or by total number of pieces.
+    cut: number of pieces or number of points per piece or number of days per piece, depending on bool npoints and bool time
+    npoints: if True, cut determines (approx) number of points per chunk; if False, cut determines total number of pieces
+    time: if True, cut gives number of days included in each chunk
+    retstd: return standard deviation of median values
+    retrange: return range of median values
+    calib: calibrate data by setting the medians of OII,OIII, and OIV to the same
+    plot: plot LC
+    retsplit: if True, return right after splitting; returns the split days,I mags, and det I lists
+    minp: minimum points to check if time used (e.g. cut by year, but first check that there are minp points in each chunk)
+    '''
+    #make sure plt.text not used if not plotting
+    if not plot: text = False
+    if srcn in cross['src_n']:
+        c = cross
+        mlist = mlist1
+    else:
+        c = cross2
+        mlist = mlist2
+    if glob: 
+        global iband
+        iband = getIV(srcn,c,calib=calib,both=False,stack=True,plot=plot,mlist=mlist,printall=False)
+    else: iband = getIV(srcn,c,calib=calib,both=False,stack=True,plot=plot,mlist=mlist,printall=False)
+    #detrend with spline
+    flatten,trend = splinedetrend(iband,retspline=True,window=window)
+    if npoints: cut = int(len(iband)/cut)+1 #number of pieces is length of table divided by number of points in each piece
+    #time cut means days per piece, so divide total time by that to get number of pieces
+    if time: 
+        imagsplit,splinesplit = [],[] #initialize lists of arrays
+        if retsplit:
+            timesplit,trendsplit = [],[]
+        st_time = float(iband['MJD-50000'][:1])
+        #loop through points and bin once time value hit
+        c = 0
+        min_used = 0 #counter to track how many chunks use min points rather than time
+        prevind = 0
+        for i in range(1,len(iband)):
+            if (iband['MJD-50000'][i-1:i]>st_time+cut and c>minp) or i == len(iband):
+                if c==minp+1: min_used+=1
+                imagsplit.append(np.array(iband['I mag'][prevind:i]))
+                splinesplit.append(np.array(iband['I detrend'][prevind:i])) 
+                if retsplit:
+                    timesplit.append(np.array(iband['MJD-50000'][prevind:i])) 
+                    trendsplit.append(np.array(trend[prevind:i])) 
+                
+                c = 0 #reset counter for number of points in chunk
+                prevind = i #save index as start of next chunk
+                st_time = float(iband['MJD-50000'][i-1:i])#reset st_time 
+            else: c+=1
+        print(f'{min_used} chunks use min points rather than time')
+    else:
+        cut = int((iband['MJD-50000'][-1:]-iband['MJD-50000'][:1])/cut)
+        imagsplit = np.array_split(iband['I mag'],cut)        
+        splinesplit = np.array_split(iband['I detrend'],cut)
+    #retsplit means just split up the values and return rather than calculating stat
+    if retsplit:
+        if not time:
+            timesplit = np.array_split(iband['MJD-50000'],cut)
+            trendsplit = np.array_split(trend,cut)
+        return timesplit,imagsplit,splinesplit,trendsplit
+    stats = []
+    #TO DO: option to calculate statistic on detrended instead
+    for i in range(cut):
+        if statistic=='median': stat = np.median(imagsplit[i])
+        elif statistic=='mean': stat = np.mean(imagsplit[i])
+        elif statistic=='max': stat = np.max(imagsplit[i])
+        elif statistic=='min': stat = np.min(imagsplit[i])
+        elif statistic=='IQR': stat = scipy.stats.iqr(imagsplit[i])
+        elif statistic=='stdev': stat = np.std(imagsplit[i])
+        elif statistic=='skew': stat = scipy.stats.skew(imagsplit[i])
+        elif statistic=='kurtosis':stat = scipy.stats.kurtosis(imagsplit[i])
+        else: print('please enter valid statistic');return
+        stats.append(stat)
+    #add standard deviation of medians to plot
+    if text:
+        plt.text(np.median(iband['MJD-50000'])-1000,np.min(iband['I mag'])+.04,f'stdev of {statistic}s of {cut} chunks: {np.std(stats):.2f}')
+    if retstd and retrange: return np.std(meds), np.max(meds)-np.min(stats)
+    elif retstd: return np.std(stats)
+    elif retrange: return p.max(stats)-np.min(stats)
+    else: return stats
+    
+def gettype(tab,num='2'):
+    '''Provided type column in tab, get list of source numbers with type
+    equal to num
+    num (str): type to get from tab
+    tab: summ or allsumm
+    returns typen (list): source numbers of that type'''
+    typen = []
+    for a in range(len(tab)):
+        if tab.loc[a]['type']==num:
+            typen.append(tab.loc[a]['src_n'])
+    return typen
+
+#BIG DIPS: SEPARATING TYPES 2 AND 3
+
+def mono(smooth,minimum=4,one=False):
+    num_mon = 0 #counter for monotonic
+    i = 0 #begin with first point
+    #number of immediate switches from monotonically increasing to monotonically decreasing
+    #decide whether to also test the opposite
+    nswitch = 0
+    this_inc = False
+    slocs = []
+    onelocs = []
+    #repeat for points after peak
+    while i+3 < len(smooth): 
+        sub = 2
+        mono = True
+        while mono and i+sub<len(smooth):
+            #saves whether or not previous monotonic trend was increasing
+            mono,inc = monotonic(smooth[i:i+sub],retwhich=True)
+            #be careful since I band flipped
+            if mono: this_inc = inc #final inc that's saved is during monotonicity
+            sub+=1
+        #add to num_mon based on what sub left off on; it automatically gets to 3
+        if sub-1>minimum: #minimum 3 passes as long as sub is 4
+            #subtracts 3 b/c sub automatically gets there
+            num_mon += sub-3 #adds nothing if there aren't monotonic points of at least minimum
+            #add to nswitch if this round was not increasing, last round was increasing, and last round is usable (min points) 
+            if this_inc: #if it was increasing right before the start
+                #look ahead to determine if it switches to monotonic decreasing
+                #trying to only require 2
+                mon,tinc = monotonic(smooth[i+sub-2:i+sub+(minimum-3)],retwhich=True)
+                #put not tinc back in?
+                if mon and not tinc: #if next three monotonically decreasing, add 1 to number of switches
+                    nswitch+=1
+                    slocs.append(i+sub-3)
+            #other way of counting: minimum inc (fainter)
+            if one and this_inc:
+                onelocs.append(i+sub-3)
+            elif one and not this_inc and i>3: #decreasing
+                onelocs.append(i-1)
+        #now reset i to i+sub to start again
+        i += sub-2 #adds 1 if no monotonic behavior
+    if one: return onelocs,num_mon
+    else: return slocs,num_mon
+
+#better to use scipy find_peaks rather than mono()
+
+def bigdip(s,cross,cross2,mlist1,mlist2,ncut=30,npoints=False,time=False,minimum=4,statistic='median',plot=True,one=False,peaks=False,
+           spline=False,sig=0,printall=False,printtype=True,frommin=False,checkbase=True,plotlc=False):
+    '''
+    spline (bool): use spline trend rather than cuts when searching for dips
+    may need additional testing since moved from notebook
+    '''
+    if spline:
+        try: iband, vband = getIV(t,cross,stack=True,plot=plot,mlist=mlist1,figsize=(4,3))
+        except: iband, vband = getIV(t,cross2,stack=True,plot=plot,mlist=mlist2,figsize=(4,3))
+        #set smooth variable to spline trend
+        flatten, smooth = splinedetrend(iband,retspline=True)
+    else:
+        smooth = cut(s,cross,cross2,mlist1,mlist2,cut=ncut,npoints=npoints,time=time,retstd=False,retrange=False,calib=False,
+                     plot=plotlc,text=False,statistic=statistic,glob=False,retsplit=False,window=200)
+    #first check that faint (max) is more variable than bright (min)
+    if checkbase:
+        mincut = cut(s,cross,cross2,mlist1,mlist2,cut=10,npoints=npoints,time=time,retstd=False,retrange=False,calib=False,
+                     plot=False,text=False,statistic='min',glob=False,retsplit=False,window=200)
+        minstd = np.std(mincut)
+        maxcut = cut(s,cross,cross2,mlist1,mlist2,cut=10,npoints=npoints,time=time,retstd=False,retrange=False,calib=False,plot=False,
+                     text=False,statistic='max',glob=False,retsplit=False,window=200)
+        maxstd = np.std(maxcut)
+        if minstd > maxstd: #bright more variable
+            t3 = False
+            t2 = False
+            if printtype: print('neither type 3 or type 2')
+            return t3,t2      
+
+    if plot:
+        plt.figure(figsize=(4,3))
+        plt.plot(np.arange(len(smooth)),smooth,color='black')
+        maxi,mini = np.max(smooth),np.min(smooth)
+        plt.ylim(maxi+.02,mini-.02)
+    if peaks:
+        pks = signal.find_peaks(smooth,height=0.2)
+        slocs = pks[0]
+        #also check in boundaries are dips (first and last point): condition is just being lower than neighbor
+        if smooth[0]>smooth[1]:
+            slocs = list(slocs)
+            slocs.insert(0,0) #put 0 at beginning of location list
+        #check end point
+        if smooth[-1]>smooth[-2]:
+            slocs = list(slocs)
+            slocs.append(len(smooth)-1)
+        slocs = np.array(slocs)
+        if printall: print(slocs)
+    else: slocs,num_mon = mono(smooth,minimum=minimum,one=one)
+    #plot points of dips
+    smooth = np.array(smooth) #allows for indexing in plot
+    if plot: 
+        plt.scatter(slocs,smooth[slocs],color='red')
+    #sig higher than 0 indicates dips should be checked for outliers
+    if sig>0:
+        dips = smooth[slocs] #could probably do this check without peaks, but those can be useful anyway
+        #upfilt corresponds to points fainter than sig sigma from median
+        if frommin: start = np.min(smooth)
+        else: start = np.median(smooth)
+        upfilt = dips>start+sig*np.std(smooth)
+        if plot: plt.axhline(start+sig*np.std(smooth),color='navy',label='dip cutoff',alpha=0.3)
+        upout = dips[upfilt]
+        uploc = list(np.where(upfilt)[0]) #+1 after [0] if indexing from 1 preferred
+        #locations of sig sigma dips within all of smooth
+        siglocs = slocs[upfilt]
+        if printall: print(f'{len(upout)} dips {sig} sigma from median; locations {uploc}')
+        if len(upout)>0: 
+            t3 = True #possible Type 3; then will add in type4 bool below
+            t2 = False #initialize Type 4 bool
+        else:
+            t3 = False
+            t2 = False
+        blist = [] #list of number of ~base values between dips
+        #now, if there are > 1 dip, verify that smooth returned near bright base in between
+        if len(upout)>1:
+            #for each pair of dips
+            for u in range(1,len(siglocs)):
+                #smooth values between dips
+                btwn = smooth[siglocs[u-1]:siglocs[u]]
+                #filter to values that are close to overall min (bright)
+#                 bright = btwn[btwn<np.median(smooth)+np.std(smooth)/4]
+                #instead, just requires it goes above dip cutoff
+                bright = btwn[btwn<start+sig*np.std(smooth)]
+                if len(bright)>0: 
+                    if printall: print(f'returns to bright base with {len(bright)} (of {ncut} total) ~base points between dips')
+                    #also check that they're neighboring dips (can change condition to allow for 1 between?)
+                    if uploc[u] - uploc[u-1] == 1: 
+                        t3 = False
+                        t2 = True
+                else: 
+                    if printall: print('does not return to base between dips so likely part of same dip, but checking for comparable depth')
+                    #still can be real if the two dips are comparably faint
+                    if np.abs(smooth[siglocs[u-1]]-smooth[siglocs[u]])<0.1:
+                        if printall: print('still believable since close in mag (<0.1 mag diff)')
+                        #also check that they're neighboring dips (can change condition to allow for 1 between?)
+                        if uploc[u] - uploc[u-1] == 1: 
+                            t3 = False
+                            t2 = True
+                blist.append(len(bright))
+            #if plot: plt.axhline(np.median(smooth)+np.std(smooth)/4,color='darkseagreen',alpha=0.2,label='return cutoff')  
+            if printall: print(blist)
+        if plot: plt.legend()
+            
+        #minimum diff in variability
+        #or cut out outliers and then look at std
+#         if checkbase:
+#             #sigma clip maxstd and minstd:
+#             maxc_med,minc_med = np.median(maxcut),np.median(mincut) #medians of each cut
+#             mincut,maxcut = np.array(mincut),np.array(maxcut)
+#             #elements of maxcut that are within a sigma from median
+#             smax = maxcut[maxcut>(maxc_med-1*maxstd)] #median - stdev
+#             #elements of mincut that are within a sigma from median
+#             smin = mincut[mincut<(minc_med+1*minstd)] #median + stdev
+#             #now take standard deviations again -- should cut down to info about base itself
+#             smaxstd = np.std(smax)
+#             sminstd = np.std(smin)
+#             print(f'new faint std: {smaxstd}, new bright std: {sminstd}')
+#             ostd = np.std(smooth)
+#             stdrat = sminstd/ostd
+#             print(f'bright std/overall std:{stdrat}')
+#             print(f'{smaxstd/sminstd} \n')
+            
+            
+#         if checkbase:
+#             if t2:
+#                 if maxstd-minstd<0.1: 
+#                     if printtype: print('neither type 3 or type 2')
+#                     return False,False  
+#             elif t3: #lower condition since more dips in t3
+#                 if maxstd-minstd<0.08: 
+#                     if printtype: print('neither type 3 or type 2')
+#                     return False,False  
+        if printtype: 
+            if t3: print('Type 3')
+            elif t2: print('Type 2')
+            else: print('neither type 3 or type 2')
+            
+    if sig>0:return t3,t2
+
+#PLOTTING TYPES
+    
+def tplot(typen,tab,text=False,label='1',marker='o',color='black',x='stdev I',y='det stdev I'):
+    for t in typen:
+        row = tab[tab['src_n']==t]
+        if t==typen[0]:plt.scatter(row[x],row[y],marker=marker,label=label,color=color)
+        #otherwise no label
+        plt.scatter(row[x],row[y],marker=marker,color=color)
+        if text: plt.text(row[x],row[y],str(t))
