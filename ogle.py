@@ -15,9 +15,11 @@ from astropy.table import Table,join,vstack,unique
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import wotan
 import scipy.stats as st
+import seaborn as sb
 
 
 def sf(name,dpi=200,path='Figs/'):
+    '''Save figure'''
     plt.savefig(path+name+'.png',dpi=dpi,bbox_inches='tight')
 
 #initial LC, then color-mag, then a bunch of periodogram functions
@@ -67,7 +69,7 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
                 else: print(f'empty file for {v}')
         #return lists of I band and V band tables
     #compensate for uncalibrated data by setting epochs to a common median, which is the overall median
-    #V band unchanged
+    #V BAND UNCHANGED
     if calib:
         itemp = vstack(iband)
         med = np.median(itemp['I mag'])
@@ -500,7 +502,7 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
     #return tbp,bp2,np.mean(bps),obp
 
     
-def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch=0,divide=False,sterr=False):
+def meanphase(tab,pd,pbins=20,det=False,med=False,double=True,stdev=True,epoch=0,divide=True,sterr=True):
     '''Compute mean mag in phase bins of LC
     divide: phase only goes to 1 or 2
     sterr: return standard error (so divide stdev by square root of number of points in bin); stdev must also be True'''
@@ -554,7 +556,7 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=False,stdev=False,epoch
 
 #can consider def denseyear as separate function
 
-def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=True,retall=False,epoch=0,sterr=True,divide=False,label=''):
+def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=True,retall=False,epoch=0,sterr=True,divide=True,label=''):
     '''Step function for phase-folded data
     To do: ability to plot on input set of axes rather than creating new plot'''
     #use mean phase to get middle values of bins and means in each bin
@@ -573,6 +575,59 @@ def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=T
     if retall and err: return mid,avg,std
     elif retall: return mid,avg
     else: return
+    
+#epoch-folding
+def maxamp(srcn,bp,tab,cross,cross2,mlist1,mlist2,day=3,step=0.1,pbins=16,window=200,autodet=True,det=True,plot=True,pdgram=False,var=True):
+    '''Find best period in small region by maximizing amplitude or variance
+    bp: if 0, taken from summ table
+    tab: table with periods (allsummtab or summtab)
+    pdgram: overlay final plot with periodogram
+    var: maximize variance rather than amplitude'''
+    #get iband LC
+    try: iband = getIV(srcn,cross,stack=True,both=False,plot=False,mlist=mlist1)
+    except: iband = getIV(srcn,cross2,stack=True,both=False,plot=False,mlist=mlist2)
+    #spline detrend
+    splinedetrend(iband,window=window)
+    #get best period if 0 passed in 
+    if bp==0:
+        row = tab[tab['src_n']==srcn]
+        if autodet: 
+            bp = float(row['best auto det pd'])
+        else: bp = float(row['est. period'])
+    #array of periods for search
+    periods = np.arange(bp-day,bp+day,step)
+    #initialize list of amplitudes
+    amps = []
+    #loop through periods and get amplitude of phase-fold using pbins phase bins
+    for p in periods:
+        #phase-fold data
+        mid,avg,err = meanphase(iband,p,pbins=pbins,det=det,double=False,stdev=True,divide=True,sterr=True)
+        #get variance
+        if var: amps.append(np.var(avg)) 
+        #get amplitude
+        else: amps.append(np.max(avg)-np.min(avg))
+    if plot: 
+        plt.plot(periods,amps,color='navy',alpha=0.7)
+        if var:plt.ylabel(f'variance with {pbins} phase bins')
+        else: plt.ylabel(f'max-min with {pbins} phase bins')
+        plt.xlabel('period')
+        if pdgram:
+            #overlay with periodogram
+            freq,power,best = periodogram(iband,minp=bp-day,maxp=bp+day,det=True,more=True,plot=False)
+            #normalize based on amps
+            power /= np.nanmax(power); power *= np.nanmax(amps)
+            plt.plot(1/freq,power,color='palevioletred',alpha=0.2)
+        #line for pdgram best or est
+        if autodet: lab = 'pdgram best'
+        else: lab = 'est.'
+        plt.axvline(bp,alpha=0.4,color='darkseagreen',label=f'{lab}: {bp:.2f}')
+        plt.legend()
+        
+        #return best period
+        maxamploc = np.where(amps==np.nanmax(amps))[0][0] #max amp location
+        bestper = periods[maxamploc]
+        return bestper
+    else: return amps
     
     #return inds of densest year
 def finddense(tab,maxspace=20,retsample=False,retall=False):
@@ -600,6 +655,7 @@ def finddense(tab,maxspace=20,retsample=False,retall=False):
     else: return sinds[stind:stind+2]
 
 def findpeaks(freq,power,retsorted=False,sigma=0,height=0.05,distance=30,div=2,pkorder=False):
+    '''Find peaks in periodogram'''
     #put period and power of periodogram results into DataFrame
     df = pd.DataFrame(columns=['period','power'])
     df['period'] = 1/freq
@@ -854,7 +910,7 @@ def rollpd(iband,npoint=200,nroll=20,det=False,minp=20,maxp=120,plot=False,plotb
         bps.append(float(bp))
         sts.append(iband['MJD-50000'][st:st+1])
         st+=nroll
-    if plotbest:
+    if plotbest: #plot best period vs. time
         plt.figure(figsize=(5,4))
         plt.scatter(sts,bps,c=maxps)
         plt.colorbar(label='LS Power')
@@ -863,6 +919,7 @@ def rollpd(iband,npoint=200,nroll=20,det=False,minp=20,maxp=120,plot=False,plotb
     return ps,pows,bps,sts
 
 def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
+    '''Detrend with Savitzky-Golay filter'''
     Imag = tab['I mag']
     if printall: print('Smooth (window = ', window, ') and detrend data...')
     Ismooth = signal.savgol_filter(Imag, window, 1)
@@ -997,6 +1054,7 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
         return 1/best_freq
 #-----------------------------------------------------------------FITTING PHASE-FOLD----------------------------------------------------------
 def combine(srcn,cross,full,iband=[],pbins=16,det=True,pd=0,window=200,btol=50,minp=5,maxp=100,testbins=True,retstep=False,close=False,mlist=['OII I','OIII I']):
+    '''Get LC for source #srcn and make dictionary of quantities describing phase-folded data'''
     #LC, detrend, and spline search
     if len(iband)==0: #if iband passed in, don't need to do splinesearch (but bp should then be >0 as well)
         iband,vband,bp = splinesearch(srcn,cross,full,close=close,minp=minp,maxp=maxp,det=det,window=window,btol=btol,phase=True,color='black',ylim=.08,mlist=mlist)
@@ -1010,7 +1068,7 @@ def combine(srcn,cross,full,iband=[],pbins=16,det=True,pd=0,window=200,btol=50,m
     else: return pdict
 
 def phase_dict(iband,pd,pbins,det=True,retstep=False,plotsymm=True,close=False):
-    '''phase-fold all data and add amp, phase diff, phase max, phase min, shape, and diff sum to dictionary
+    '''Phase-fold all data and add amp, phase diff, phase max, phase min, shape, and diff sum to dictionary
     note: max and min are in mags, so phase max is phase bin # of faintest bin
     to do:  decide whether to convert to increasing from zero right away
     '''
@@ -1058,9 +1116,18 @@ def phase_dict(iband,pd,pbins,det=True,retstep=False,plotsymm=True,close=False):
     else: return pdict
     
 def symm(mid,avg,err,pdict,pbins=16,ylim=.01,square=False,plot=False):
-    '''Fold over maximum; subtract and return sum of squares
-    To do:  add propagation of standard error
-            option to divide by some number (max in the bin? amplitude?)'''
+    ''' 
+    Method to describe symmetry of phase-folded data
+    Folds over maximum; subtracts and returns sum of squares
+    To do: add propagation of standard error
+            option to divide by some number (max in the bin? amplitude?)
+    mid: middle values of phase bins
+    avg: phase-folded values
+    err: errors on phase-folded values
+    pdict: dictionary quantifying phase-folded data to add to
+    pbins: number of phase bins
+    square: if True, add sum of squares to table; if False, add absolute mean
+    '''
     #roll data s.t. peak is at phase 0.5 --> makes fold easier
     roll = int(pbins/2) - int(float(pdict['phase min']*pbins-0.5))
     ravg = np.roll(avg,roll)
@@ -1082,11 +1149,18 @@ def symm(mid,avg,err,pdict,pbins=16,ylim=.01,square=False,plot=False):
         pdict['symm sum'] = np.sum(sums**2)
         return np.sum(sums**2)
     else: 
-        #'sum' but really an mean difference when folded in half around peak
+        #'sum' but really mean difference when folded in half around peak
         pdict['symm sum'] = np.abs(np.mean(sums))
         return np.sum(sums)
     
 def test_bins(iband,bp,bins=np.arange(10,100,10),plot=True):
+    '''Test the effect of different numbers of phase bins
+    Finds values included in bindf table (same as in dictionary) using different phase bin values
+    Option to plot these quantities vs. the number of phase bins
+    iband: table with I mag 
+    bp: period to use in fold
+    bins: array of phase bins to try
+    plot: if True, plots subplots of quantities vs. # of phase bins'''
     bindf = pd.DataFrame(columns=['bins','amp','phase diff','phase max','phase min','shape',
                              'diff mean','mean','skew','kurtosis','symm sum','mean err'])
     bindf['bins'] = bins
@@ -1212,7 +1286,7 @@ def monotonic(L,retwhich=False):
     if retwhich: return (inc or dec), inc #returns monotonic bool followed by bool for increasing
     else: return inc or dec
     
-def cut(srcn,cross,cross2,mlist1,mlist2,cut=10,npoints=False,time=False,minp=1,retstd=True,retrange=False,calib=False,plot=True,text=False,statistic='median',glob=False,retsplit=False,window=200): #decide whether to do fixed chunks or fixed factor chunks or fixed number of points
+def cut(srcn,cross,cross2,mlist1,mlist2,cut=10,npoints=False,time=False,minp=1,retstd=True,retrange=False,calib=False,plot=True,text=False,statistic='median',glob=False,retsplit=False,window=200,old=False): #decide whether to do fixed chunks or fixed factor chunks or fixed number of points
     '''Divide LC into chunks and find median in each
     Division can be by number of points per piece or by total number of pieces.
     cut: number of pieces or number of points per piece or number of days per piece, depending on bool npoints and bool time
@@ -1224,6 +1298,7 @@ def cut(srcn,cross,cross2,mlist1,mlist2,cut=10,npoints=False,time=False,minp=1,r
     plot: plot LC
     retsplit: if True, return right after splitting; returns the split days,I mags, and det I lists
     minp: minimum points to check if time used (e.g. cut by year, but first check that there are minp points in each chunk)
+    old: if True, use old version of function (i.e. if npoints, time False, then number of total cuts is cut)
     '''
     #make sure plt.text not used if not plotting
     if not plot: text = False
@@ -1265,7 +1340,7 @@ def cut(srcn,cross,cross2,mlist1,mlist2,cut=10,npoints=False,time=False,minp=1,r
             else: c+=1
         print(f'{min_used} chunks use min points rather than time')
     else:
-        cut = int((iband['MJD-50000'][-1:]-iband['MJD-50000'][:1])/cut)
+        if not old:cut = int((iband['MJD-50000'][-1:]-iband['MJD-50000'][:1])/cut) #total number of days/number passed in
         imagsplit = np.array_split(iband['I mag'],cut)        
         splinesplit = np.array_split(iband['I detrend'],cut)
     #retsplit means just split up the values and return rather than calculating stat
@@ -1307,7 +1382,7 @@ def gettype(tab,num='2'):
             typen.append(tab.loc[a]['src_n'])
     return typen
 
-#BIG DIPS: SEPARATING TYPES 2 AND 3
+#Old functions for separating sources with 1 vs. multiple/correlated dips
 
 def mono(smooth,minimum=4,one=False):
     num_mon = 0 #counter for monotonic
@@ -1493,9 +1568,22 @@ def bigdip(s,cross,cross2,mlist1,mlist2,ncut=30,npoints=False,time=False,minimum
 #PLOTTING TYPES
     
 def tplot(typen,tab,text=False,label='1',marker='o',color='black',x='stdev I',y='det stdev I'):
+    #for histograms have to add to list and then make hist
+    histval = []
     for t in typen:
         row = tab[tab['src_n']==t]
-        if t==typen[0]:plt.scatter(row[x],row[y],marker=marker,label=label,color=color)
+        if t==typen[0] and x!='' and y!='': plt.scatter(row[x],row[y],marker=marker,label=label,color=color)
         #otherwise no label
-        plt.scatter(row[x],row[y],marker=marker,color=color)
-        if text: plt.text(row[x],row[y],str(t))
+        elif x=='' or y=='': #histogram
+            if x=='' or y=='': #histogram
+                if x!='':histval.append(float(row[x]))
+                else:histval.append(float(row[y]))
+        else: 
+            plt.scatter(row[x],row[y],marker=marker,color=color)
+            if text:
+                try:
+                    plt.text(row[x],row[y],str(t))
+                except: print(f'nan for {str(t)}')
+    #make histogram
+    if len(histval)>0:
+        sb.distplot(histval,color=color,kde=False,label=label)
