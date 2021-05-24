@@ -1,0 +1,109 @@
+src_n,best period,est. period,best auto det pd,best LS power,qual shape,qual phase change,qual ToA,ToA best,residual pattern,final determination,X-ray established?,est best,pdgram best,good new pd,period consistent in all methods,aperiodic,look for better value
+2,84,84,83.98507036,0.07,decent symm shape with scatter,no clear phase change but shape change,good ,83.44 but 83.49 with 3 iterations,,"est, best good with some error",yes,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+3,18.38,18.38,17.40435394,0.012,"bad with 18.38, better but high scatter with best",comes and goes; not believable enough,"noisy, min stdev >.2",17.4 after 3 iters; 18.38 is slope when it's used,,TO DO: look at phase by year for best,yes,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+4,81.9,82.37,81.89181819,0.2,best looks better than est,mostly great,good ,3 iters: 81.86,,best from ToA or periodogram better than est,no,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+5,1.805,0,2.233789666,0.06,,1.805 from literature decent but phase change,bad,,,2.23 not real,no,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+6,17.13,17.13,17.34792904,0.03,decent; pdgram noisy close to period,"weird shapes, hard to tell if phase change",decent,17.13,,17.13,yes,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+7,24.8,21.9,23.9617224,0.01,not great; did separate analysis in Source7 notebook,decent shapes but phase change,noisy but slope is 21.9 when 21.9 used,,,,yes,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+8,,0,6.228457016,",01",bad,,"noisy, min stdev >.2",local min,,can't conclude/already 'aperiodic',,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+9,44.91,44.92,44.90169659,0.14,excellent,consistent,great,44.956,,agreement; just have uncertainty in second decimal,,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+10,39.83,40.03,39.83498206,0.12,much better than est.,no phase change; interesting shapes,good ,39.81,,best/ToA better than est,no,FALSE,TRUE,FALSE,FALSE,FALSE,FALSE
+11,28.5,28.51,28.49446859,.02 but decent shape,sinusoidal with scatter,not good enough in shape or phase,bad,,~parabolic,can't conclude,yes,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+12,,77.2,80.84778068,0.02,sinusoidal with scatter,too noisy to tell,not great,81 best with 3 iterations,,est definitely not good (81 better but can't conclude),,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+13,,36.3,36.23588424,.04 and noisy,not so bad,some indication of consistent phase but not good enough,bad,,,not out of the question but not great evidence,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+14,,35.6,35.61960848,.08 with nearby local max,decent  ,good at beginning and end (not in dip),not a lot of data,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+15,,0,145.9748546,".09, bad shape",good but high scatter,shape comes and goes; large error on period?,decent (abs min not far from locals),145.8 best with 3 iterations,,decent evidence for new period but may be alias etc.,,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+16,,74.51,74.2951726,".04, good shape",est and best look the same,consistent phase,great,74.38,,agree with best/est within <day,,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+17,,36.43182,36.42602906,0.12,great,interesting shape changes but consistent,great,36.4,,agree with best/est within <.1 day,,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+19,,17.79,17.91165737,".016, noisy",best better,"some phase consistnecy, but lack of shape/existence consistency",not good,18.2,,"can't conclude much, but best better than est; TO DO: follow up with folds using ToA best",no,FALSE,TRUE,FALSE,FALSE,FALSE,TRUE
+20,,75.97,83.35673658,".035, noisy",sinusoidal with scatter,potential phase consistency,not great,est near best when only one iteration used,,,no,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+21,,22.5,22.50945148,".03, but good profile","strange shape, decent scatter",weird shape changes but phase likely consistent,good ,22.53,~parabolic for part of it,agree with uncertainty in second decimal,no,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+22,,90.5,90.44165736,0.2,FRED and low scatter,slight shape change but consistent,good ,90.61,,,no,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+23,,137.36,137.9166009,0.12,great shape,"good, slight shape variation",decent,138.35,,period likely a bit higher than est.,yes,FALSE,TRUE,FALSE,FALSE,FALSE,FALSE
+24,,62.1,60.91341313,.015 and  noisy,"est shape bad, nearby better",a lot of changes,not good,,,wouldn't trust these periods,no,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+25,,110.6,110.8461154,0.03,good but double peak?,consistent phase with smaller secondary peak,good ,110.86,,slightly higher better than est,no,FALSE,TRUE,FALSE,FALSE,FALSE,FALSE
+26,,33.38,33.40686632,0.11,good with some scatter; same with est and best,consistent phase until last two years,decent,"33.29, but with secondary peak at slightly higher value",outliers in last couple of years,"good period, but investigate final couple of years",no,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+27,,362.3,326.1532171,0.005,very strange,hard to check but great for at least one year,"decent, a bit noisy","at est, with best at other local min",,not out of the question but hard to fully confirm,yes,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+28,,88.3,88.34353596,0.5,great,great,great,88.3,,est better? but completely confirmed,no,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+30,,21.95,21.95754416,0.3,great,good,good ,21.94,,confirmed,no,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+31,,103.6,101.1191342,".02, noisy",not so good,okay for a few years,,98.9,,investigate other periods,yes,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+32,,197,185.9852251,0.01,est shape bad ,not so good,noisy,182 and 218 consistently better with iterations,,investigate other periods,no,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+34,,0,72.49469244,0.05,fold looks decent,not great but not too bad,not so good,65,,investigate this lower period,no,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+35,,0,51.37417341,0.08,decent with scatter,"not good enough, but evidence of something going on",noisy,local min at best,,investigate nearby periods,no,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+36,,68.54,68.61661178,".04,good shape","good shape, potentially less scatter with best",weird shape changes but phase likely consistent,good,68.78,,,yes,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+37,,67.88,68.59233224,0.016,not great   ,decent but not good enough,decent with a few close dips near est/best,67.2,,close to answer but not enough yet,yes,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+38,,0,87.32023199,.03 but decent shape,sinusoidal but somewhat believable,mostly decent,not good,,,look for potential aliasing,no,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+39,,71.98,72.32523593,.025 but decent shape,best better and possible,possibly there but not so good,not good,,,not believable enough,no,FALSE,TRUE,FALSE,FALSE,FALSE,TRUE
+40,,224,225.8078952,0.008,"best much better, double-peak",good shape so should focus on phase for final answer,"decent, especially with iterations",228,,try out 228 with period by year,,FALSE,TRUE,FALSE,FALSE,FALSE,TRUE
+41,,29.91,29.90017629,".01, noisy","decent shape, high scatter","only sometimes there, weird shape",not good,,,don't trust it so much,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+42,,49.06,51.73246695,,not good,,not enough data,,,don't trust  ,,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE
+44,,64.8,63.56963304,0.035,est bad,not great,not great,63.4,,"best better than est, but should keep investigating",,FALSE,TRUE,FALSE,FALSE,FALSE,TRUE
+45,,59.77,59.71100064,0.6,excellent,excellent,great,59.7,,one of the best,,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+46,,0,127.4758374,".025, noisy",high scatter,something there but need to refine value,many local minima but absolute with iterations near best,128.4,,keep investigating,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+47,395,344,353.6199198,0.17,best best without detrending,something there but difficult,not great,"380, est at local min",,,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+48,,1163,1170.540329,,,,not enough data,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+49,,116.6,105.0001795,0.004,not believable,,noisy,,,look into original source of est.,yes,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+50,,45.9,45.94852333,>0.2,great,"good, sometimes double-peaked",great,46,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+51,,0,0,,,,,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+52,,94.4,100.6152784,0.03,noisy,possible,noisy,100.2,,est. not trustworthy,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+53,,74.96,74.01692364,".07, double-peaked",est. more FRED,interesting shape changes,decent but noisy,75 using 3 iterations,,error of ~day; look into shape changes,,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+54,,265.3,271.3171631,0.001,only original 271 looks good,both have good shapes but phase shift,decent but noisy,267 but goes down to 240 using 3,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+55,,0,129.5990946,".05, noisy ","sinusoidal, high scatter","changes, not convincing enough",noisy,129.9 using 3 folds,,see analysis in QuiescentSources: 127 not present in quiescent but 95.36 in whole LC,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+56,,151,153.5068229,0.02,nothing at est,weird shapes,great,153.5 using 3,,"good example of ToA looking great, pdgram not as good",,FALSE,TRUE,FALSE,FALSE,FALSE,FALSE
+57,,0,70.96147944,".02, noisy",high scatter,weird shapes,noisy,,,not believable enough; look into,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+58,,412,411.7612098,".02, noisy",nothing looks good,difficult to do,noisy,only has min near est when 1 iteration,,don't believe,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+59,,0,3.262378918,0.06,decent shape,phase not perfectly consistent,noisy,,,possible but follow up,,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE
+60,,390,350.691566,0.07,great shape,,great but decent width in dip,392.9,,just check with spaced lines; look at note about pdgram best,,TRUE,FALSE,FALSE,FALSE,FALSE,FALSE
+61,,91.5,90.86898219,".03,noisy",not great,phase changes but suggestion of periodicity,noisy,,,periodicity there but do wider search,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+62,,101.94,102.1069265,0.14,great shapes,good,noisy,only local min ,,interesting since ToA expected to look good,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+63,656,0,163.5099582,,,,,,,new period from spacing lines,,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+64,,0,26.17077112,0.35,great,great,great,26.177,,"not actually know, est. just not in table",,FALSE,TRUE,TRUE,FALSE,FALSE,FALSE
+65,,0,2.688972098,0.035,not so good,not so good,noisy,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+67,,0,102.9683706,0.12,"good, sinusoidal",good,noisy,102.6,,"may want to play around for better ToA, could be because of period length",,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+68,,0,5.815550882,,,,,,,aperiodic,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+69,,0,10.56340486,,,,,,,aperiodic,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+71,,0,26.48742791,,,,,,,aperiodic,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+72,,414.91345,416.5347183,0.25,good shape without detrending,great,noisy,,,"may want to play around for better ToA, could be because of period length",,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+73,,0,2.167379733,0.02,possible shape,sometimes present?,noisy,,,,,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE
+75,,80.1,80.78617182,.02 but decent shape,"decent, not great",not great,~noisy,80.83 no longer abs min once iterations used :(,,"worth pursuing other periods, but possible",,FALSE,TRUE,FALSE,FALSE,FALSE,TRUE
+76,,0,3.414415013,,,,noisy,,,,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+77,,0,3.188163602,0.1,decent sinusoidal,consistent,noisy,3.11,high values,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+78,,0,7.741456883,,,,noisy,,,,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+79,,0,14.41981363,,,,noisy but local min,,,,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+80,,0,96.38996968,0.04,decent,good,good,96.64,,good new period!,,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+81,,0,2.169827588,0.1,decent,good in 5/8 chunks,requires finer step (.001 days),2.17,,"good new period, though unlikely to be orbital",,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+82,,0,115.8555939,".04, noisy",need to change bounds,"phase consistency, shape change",decent,115.06,,could be good new period,,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+84,,0,5.613729244,0.05,sinusoidal,inconsistent phase but periodicity present,noisy,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+85,,0,117.3365764,".05, noisy",,phase change but good shape,noisy,,,periodicity present but look for better value,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+86,,0,21.03659691,noisy,not great,decent for a couple,noisy,,,,,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE
+87,,0,104.8295668,".08, noisy",not so bad,actually decent,noisy,around 102 and 118,,potential new period but further investigate,,FALSE,FALSE,TRUE,FALSE,FALSE,TRUE
+93,,0,2.498056043,0.02,not good,sometimes fine,noisy,2.49,,not trustworthy but possible,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+95,,0,78.30793344,".02, noisy",not good,,noisy,78 with only one iter,,aperiodic/insufficient,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+96,,0,17.54960033,0.35,great,great but disappears in final,good,17.56,,"not sure if really new, but if so great",,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+97,,0,59.43042301,0.03,very noisy,sometimes decent,noisy,,,"not good enough, but search more; connect to transition?",,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+98,,0,2.699109121,,,,noisy,,,aperiodic  ,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+100,,0,11.78281239,,,,noisy,,,aperiodic,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+101,,0,35.42423936,0.07,not terrible,,noisy,,,aperiodic?,,FALSE,FALSE,FALSE,FALSE,TRUE,TRUE
+104,,0,127.0835372,".04, very noisy",bad,,noisy,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+105,,0,35.7218515,,,,,,,aperiodic,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+106,,0,9.379064726,,,,,,,aperiodic?,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+107,,0,78.86227295,,,,,,,not a lot of data,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+111,96.1,0,2.04577731,0.03,"good shape, high scatter",>= 1 yr out of phase,good for best period,95.7,,~96 new period,,FALSE,FALSE,TRUE,FALSE,FALSE,TRUE
+114,,0,2.958350331,,,,,,,,,FALSE,FALSE,FALSE,FALSE,TRUE,FALSE
+115,,72.231,72.29669847,0.15,great,,great,72.36,,,,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
+116,,0,77.10390125,"0.03, noisy",not great,,noisy,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+119,,0,74.94925435,0.08,need to fix bounds,,,75,,good new period,,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+121,,0,93.53848374,".015, noisy",not good,,decent but double-dip around best,95.14,,look into,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+123,,0,7.891788598,,,,noisy,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+124,,0,105.1532709,0.07,possible,,noisy/maybe,"105 when 1 iteration, but not 3",two lines?,,,FALSE,FALSE,TRUE,FALSE,FALSE,TRUE
+125,,36.41,35.78929993,".05, noisy",decent shape but high scatter,,noisy,38.45,,,,FALSE,FALSE,FALSE,FALSE,FALSE,TRUE
+126,,0,46.04818795,0.01,,,noisy,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+128,,0,92.73872507,,,,noisy,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+129,,0,8.612014026,,,,noisy,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+132,,29.75,28.52637074,.04 and noisy,decent with high scatter,,noisy,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+133,,0,4.063649342,,possible but not great,,noisy  ,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+136,,0,120.6048705,,,,noisy/aliasing,~120 when one iteration,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+138,,0,2.140374,,,,,,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+139,,0,84.15997386,,not good,,noisy/aliasing,local min at 84,,,,FALSE,FALSE,FALSE,FALSE,FALSE,FALSE
+141,,0,5.183714225,0.2,good shape,,decent,5.25,,some sort of periodicity,,FALSE,FALSE,TRUE,FALSE,FALSE,FALSE
+142,,119.8,119.6673444,0.18,good shape,,min from 100-130,local min ~120,,,,TRUE,TRUE,FALSE,FALSE,FALSE,FALSE
