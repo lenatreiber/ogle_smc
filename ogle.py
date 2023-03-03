@@ -18,13 +18,20 @@ import scipy.stats as st
 import seaborn as sb
 
 
-def sf(name,dpi=200,path='Figs/'):
+def sf(name,dpi=200,path='Figs/',ticks=True):
     '''Save figure'''
+    if ticks: fixticks() #first make sure minor ticks on and tick sizes decent
     plt.savefig(path+name+'.png',dpi=dpi,bbox_inches='tight')
+    
+def fixticks():
+    ax = plt.gca()
+    ax.tick_params('both',length=9,width=1.5,which='major',labelsize=12,direction='in',top=True, right=True)
+    ax.tick_params('both',length=4,width=1.5,which='minor',direction='in',top=True, right=True)
+    ax.minorticks_on()
 
 #initial LC, then color-mag, then a bunch of periodogram functions
 
-def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0,save=False,file='',radec=True,mlist=['OII I','OIII I'],calib=False):
+def getIV(num,cross,newsrcn=0,name='',return_title=False,printall=False,stack=False,both=True,plot=False,size=4,figsize=(8,4),zooms=False,mult=(3,40),offset=0,save=False,file='',radec=True,mlist=['OII I','OIII I'],calib=False):
     '''Uses table (cross) to make lists of I band and V band tables
     mult: tuple of multiples of orbital period to show
     offset: offset from beginning of light curve in days to use for zooms
@@ -69,17 +76,26 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
                 else: print(f'empty file for {v}')
         #return lists of I band and V band tables
     #compensate for uncalibrated data by setting epochs to a common median, which is the overall median
-    #V BAND UNCHANGED
-    if calib:
+    if calib: #updated 2/3/23 to use median of OGLE II and III rather than median of OGLE II, III, and IV
         itemp = vstack(iband)
-        med = np.median(itemp['I mag'])
-        for i in iband:
+        med = np.median(vstack(iband[:-1])['I mag']) #rather than itemp['I mag']
+        for i in iband: 
             #calculate current median
             cmed = np.median(i['I mag'])
             #difference between current and target median
             dmeds = med-cmed
             #add difference to all points
             i['I mag'] += dmeds
+        if both and len(vband)>1:
+            vtemp = vstack(vband)
+            med = np.nanmedian(vstack(vband[:-1])['V mag'])
+            for v in vband:
+                #calculate current median
+                cmed = np.nanmedian(v['V mag'])
+                #difference between current and target median
+                dmeds = med-cmed
+                #add difference to all points
+                v['V mag'] += dmeds
     if plot:
         #stack for ease
         ib = vstack(iband)
@@ -105,8 +121,11 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
         ax.set_xlabel('MJD-50000',fontsize=14)
         ax.set_ylabel('OGLE mag',fontsize=14)
         ax.set_ylim(maxmag+.05,minmag-.05)
-        if radec: ax.set_title('Source #'+str(num)+' RA: '+str(ra)+' Dec: '+str(dec))
-        else: ax.set_title('Source #'+str(num))
+        if newsrcn>0: num = newsrcn #replace source number with the updated one for title
+        if radec and len(str(name))>3: title = f'{name} (Source #'+str(num)+') RA: '+str(ra)+' Dec: '+str(dec)
+        elif radec: title = 'Source #'+str(num)+' RA: '+str(ra)+' Dec: '+str(dec)
+        else: title = 'Source #'+str(num)
+        ax.set_title(title)
         ax.legend()
         if zooms: #for now just plots I band
             #ax1 zoom is hundreds of days
@@ -140,9 +159,10 @@ def getIV(num,cross,printall=False,stack=False,both=True,plot=False,size=4,figsi
                 max2,min2 = np.max(zi2['I mag']),np.min(zi2['I mag'])
                 ax1.set_ylim(max1+.02,min1-.02)
                 ax2.set_ylim(max2+.02,min2-.02)  
-    if save: plt.savefig(file+'.png',dpi=200,bbox_inches='tight')
+    if save: plt.savefig(file+'.pdf',bbox_inches='tight')
     if stack and both: return vstack(iband),vstack(vband)
-    elif both: return iband,vband
+    elif both and return_title: return iband,vband,title
+    elif both: return iband, vband
     elif stack: return vstack(iband)
     else: return iband
     
@@ -176,7 +196,7 @@ def gallery(cross,n=0,ctime=True,color='#CF6275',cmap='viridis'): #assumes sever
         c+=1
     return n
     
-def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,ctime=True,cmap='viridis',both=True,save=False,file=''):
+def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,ctime=True,cmap='magma',both=True,save=False,file='',title=''):
     '''Interpolates I band data at times of V band and then plots color-mag with best fit and corr coeff.
     Now assumes iband and vband are single tables, but can add option to vstack in function if needed.'''
     #interpolate I band
@@ -204,10 +224,12 @@ def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,cti
             im = ax.scatter(vband['V mag']-i_interp,i_interp,c=vband['MJD-50000'],cmap=cmap,zorder=10)
             #add errorbars
             ax.errorbar(vband['V mag']-i_interp,i_interp,yerr=ie,xerr=v_i_err,color='grey',zorder=0,ls='none',marker='')
+            fixticks()
             if both: 
                 ax1.scatter(vband['V mag']-i_interp,vband['V mag'],c=vband['MJD-50000'],cmap=cmap,zorder=10)
                 #add errorbars separately
                 ax1.errorbar(vband['V mag']-i_interp,vband['V mag'],yerr=vband['V mag err'],xerr=v_i_err,color='grey',zorder=0,ls='none',marker='')
+                fixticks()
             fig.colorbar(im, ax=axlist,label='MJD-50000')        
         else: 
             ax.errorbar(vband['V mag']-i_interp,i_interp,yerr=ie,xerr=v_i_err,color='black',linestyle='none',marker='o')
@@ -220,24 +242,457 @@ def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,cti
         ax.set_ylim(maxi+.04,mini-.04)
         if both:ax1.set_ylim(maxv+.04,minv-.04)
         
-        ax.set_ylabel(r'$\mathrm{I_{int}}$',fontsize=14)
+        ax.set_ylabel(r'$\mathrm{I_{int}}$',fontsize=16)
         if both: 
-            ax1.set_xlabel(r'$\mathrm{V - I_{int}}$',fontsize=14)
-            ax1.set_ylabel('V',fontsize=14)
-        else: ax.set_xlabel(r'$\mathrm{V - I_{int}}$',fontsize=14)
+            ax1.set_xlabel(r'$\mathrm{V - I_{int}}$',fontsize=16)
+            ax1.set_ylabel('V',fontsize=16)
+        else: ax.set_xlabel(r'$\mathrm{V - I_{int}}$',fontsize=16)
     if printcorr:
         #print correlation corr with interpolated I and V-I and then V and V-I
         print('I and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,i_interp)[1][0])
         print('V and V-I correlation:',np.corrcoef(vband['V mag']-i_interp,vband['V mag'])[1][0])
-    if save: plt.savefig(file+'.png',dpi=200,bbox_inches='tight')
+    if len(title)>1:ax.set_title(title)
+    if save: 
+        fixticks()
+        #plt.savefig(file+'.png',dpi=200,bbox_inches='tight')
+        plt.savefig(file+'.pdf',bbox_inches='tight')
     if retint or not plot: return i_interp
     else: return
 
+#-----------------------------------------------------------------SEPARATED PARTS OF BASIC FUNCTION--------------------------------------------------------------
+def grab_initial_basic(index,full,nums,src_dict):
+    #original source number
+    srcn = nums[index]
+    #new/updated source number using dictionary
+    new_srcn = src_dict[srcn]
+    
+    #grab row for source number from full table
+    row = full[full['src_n']==srcn]
+    print('Original source number: '+str(srcn))
+    print('Current source number: '+str(new_srcn))
+    print('RA,Dec (deg): '+ str(float(row['ra_deg']))+', '+str(float(row['dec_deg'])))
+    print('Established period: '+str(float(row['Porb'])))
+    print('NS spin period: '+str(float(row['period'])))
+    #check on this
+    print('Separation: '+str(float(row['Separation_1'])))
+    orb = float(row['Porb'])
+    return srcn, new_srcn, row, orb
 
+def plot_window_functions(iband,return_window=False):
+    wfreq1, wpow1, wbp1 = periodogram(iband,minp=0.1,maxp=2,wfunc=True,plot=False,more=True)
+    
+    #if power isn't all nans, plot window functions
+    if False in np.isnan(wpow1):
+        fig,ax = plt.subplots(1,2,figsize=(9,4))
+        ax[0].plot(1./wfreq1,wpow1,color='black')
+        ax[0].set_ylabel('LS Power',fontsize=14)
+        ax[0].set_xlabel('Period (days)',fontsize=14)
+        wfreq2, wpow2, wbp2 = periodogram(iband,minp=2,maxp=2000,wfunc=True,plot=False,more=True)
+        fig.suptitle('Window Function Less and Greater than 2 Days',fontsize=14)
+        ax[1].plot(1/wfreq2,wpow2,color='black')
+    if return_window:
+        return wfreq1,wpow1
+    else: 
+        return
+
+def compare_window_to_periodogram(itemp,orb,bpdet,sigmas,dists,wpf):
+    print('Comparing peaks of 0.1-2 day window function and detrended periodogram...')
+    detfreq,detpow,detbp = periodogram(itemp,minp=0.1,maxp=2,det=True,more=True,plot=False,fap=False,fal=False)
+    lpf = findpeaks(detfreq,detpow,sigma=sigmas[3],distance=dists[3],pkorder=True) #compare to wpf
+    #beat period of top peak in each
+    if len(lpf)>0 and len(wpf)>0:
+        top_beat = findbeat(lpf.iloc[0]['period'],wpf.iloc[0]['period'])
+        if orb>0 and np.abs(top_beat-orb)<1: print(f'Beat period of highest peaks is {top_beat}.')
+        elif np.abs(top_beat-bpdet)<1: print(f'Beat period of highest peaks is {top_beat}.')       
+        #aliases between 2 and 200 days in low search
+        aliases = aliasarr(lpf['period'])
+        waliases = aliasarr(wpf['period'])
+        if orb>0:
+            nalias = aliases[np.abs(aliases-orb)<1]
+            if len(nalias)>0: print('There is at least one alias of the 0.1-2 day detrended search within a day of the established period.')
+            #repeat for window function
+            nwalias = waliases[np.abs(waliases-orb)<1]
+            if len(nalias)>0: print('There is at least one alias of the 0.1-2 day window function within a day of the established period.')
+        else:
+            nalias = aliases[np.abs(aliases-bpdet)<1]
+            if len(nalias)>0: print(f'There is at least one alias of the 0.1-2 day detrended search within a day of {bpdet} days (the detrended peak).')
+            #repeat for window function
+            nwalias = waliases[np.abs(waliases-bpdet)<1]
+            if len(nalias)>0: print(f'There is at least one alias of the 0.1-2 day window function within a day of {bpdet} days (the detrended peak).')
+    else: print('No peaks found so not searching for beat periods or aliases.')
+    return 
+
+def inset_ogle(ilist,iband,ax,orb,period_from_Coe=False):
+    #find ax for inset based in whether or not est. period > 200 days
+    if orb>200: axind = 2
+    else: axind = 1
+    if period_from_Coe: ax[axind].axvline(orb,color='maroon',ls='dashed',alpha=0.4)
+    else: ax[axind].axvline(orb,color='darkseagreen',alpha=0.4)
+    
+    #inset search closer to orbital period for each OGLE epoch
+    axins = inset_axes(ax[axind], width=1.4, height=1.4,loc='upper right',borderpad=0.4)
+    colors = ['navy','maroon','darkgreen']
+    labels = ['OII','OIII','OIV']
+    if len(ilist)==2: #no OII
+        labels=labels[1:]
+        colors = colors[1:]
+    elif len(ilist)==1: #no OIII either; better way to do this but didn't see some are only OIV
+        labels=labels[2:]
+        colors = colors[2:]
+    c = 0
+    low = orb-orb/10
+    up = orb+orb/10
+    for i in ilist:
+        f,p,bp = periodogram(i,minp=low,maxp=up,more=True,plot=False)
+        axins.plot(1/f,p,color=colors[c],label=labels[c])
+        axins.set_yticks([])
+        c+=1
+    if orb>200:
+        f,p,insetbp = periodogram(iband,minp=low,maxp=up,more=True,plot=False)
+    if period_from_Coe:axins.axvline(orb,color='maroon',ls='dashed',alpha=0.4)
+    else:axins.axvline(orb,color='darkseagreen',alpha=0.4)
+    axins.legend(framealpha=0.2)
+    return low,up
+
+def local_pdgram_max(freq2,power2,pf2,freq3,power3,pf3,orb,sigmas,dists):
+    if orb > 200:  #est. period in third periodogram
+        near = pf3[np.abs(orb-pf3['period'])<orb/10]
+        freq,power = freq3,power3
+    #est. period between 2 and 200 days
+    else: 
+        near = pf2[np.abs(orb-pf2['period'])<orb/10]
+        freq,power = freq2,power2
+    i = 0
+    #adjust distance and sigma until nearby peak identified
+    while len(near)<1 and i<sigmas[1]/5:
+        pf = findpeaks(freq,power,sigma=sigmas[1]-i*5,distance=dists[1]-i*5,pkorder=True)
+        near = pf[np.abs(orb-pf['period'])<orb/10]
+        i+=1
+    return near 
+        
+
+def compare_phasefold(iband,near,bp2,orb,pbins,det,title='',period_from_Coe=False):
+    '''Plot phase-folded data with established period and then in another panel with best period found in 2-200d search'''
+    if len(near)>0: 
+        #highest peak within a tenth of established
+        np1 = float(near['period'][:1]) 
+        #set label
+        if period_from_Coe: nearlab = f'LS peak near Coe est.:{np1:.2f}'
+        else: nearlab = f'LS peak near Haberl est.:{np1:.2f}'
+    else: 
+        np1 = bp2
+        nearlab = f'LS peak 2-200.:{np1:.2f}'
+    fig,ax = plt.subplots(1,2,figsize=(10,4),sharey=True)
+    plt.subplots_adjust(wspace=0.04)
+
+    mid,avg,err = meanphase(iband,orb,pbins=pbins,det=det,double=True,divide=True,stdev=True,sterr=True)
+    if period_from_Coe: ax[0].step(mid,avg,where='mid',color='black',label=f'Coe est. pd: {orb}')
+    else: ax[0].step(mid,avg,where='mid',color='black',label=f'Haberl est. pd: {orb}')
+        
+    #add standard error
+    ax[0].errorbar(mid,avg,yerr=err,color='black',alpha=0.4,ls='none')
+        
+    mid,avg,err = meanphase(iband,np1,pbins=pbins,det=det,double=True,divide=True,sterr=True,stdev=True)
+
+    ax[1].step(mid,avg,where='mid',color='black',zorder=10,label=nearlab)
+    ax[1].errorbar(mid,avg,yerr=err,color='black',alpha=0.4,ls='none')
+        
+    ax[0].legend(loc='lower left')
+    ax[1].legend(loc='lower left')
+    ax[0].set_ylabel('I mag',fontsize=13)
+    ax[0].set_xlabel('Phase',fontsize=13)
+    ax[1].set_xlabel('Phase',fontsize=13)
+    maxi,mini = np.max(avg),np.min(avg)
+
+    ax[0].set_ylim(maxi+.02,mini-.02)
+    if len(title)>1: fig.suptitle(title,fontsize=13)
+
+    
+def compare_detrended_phasefold(orb,Coe_orb,num_panels,iband,btol,spline,low,up,sigmas,dists,pbins,medlim,color,fal=0.001,save=False,file='',title='',ret_fal=False):
+    """
+    Compare the periodogram and phase-fold after detrending.
+    *draft docstring written with ChatGPT*
+    Parameters:
+    ----------
+    orb: float
+        The orbital period from Haberl et al.
+        0 if no established period
+    orb: float
+        The orbital period from Coe et al.
+        0 if no established period
+    iband: numpy.ndarray
+        The light curve data.
+    btol: float
+        The tolerance level for fitting a spline.
+    spline: bool
+        Whether to use a spline to detrend the data.
+    low: float
+        The minimum period to consider for the periodogram.
+    up: float
+        The maximum period to consider for the periodogram.
+    sigmas: list[float]
+        The significance levels for peak detection in the full periodogram.
+    distances: list[int]
+        The minimum distance between peaks for peak detection in the full periodogram.
+    pbins: int
+        The number of phase bins for phase-folding.
+    medlim: bool
+        Whether to use the median value to set the y-axis limits for the phase-folded plots.
+    color: str
+        The color to use for plotting the detrended light curve.
+    fal: 
+        The false alarm level to plot as a horizontal line in the detrended periodogram
+        Use 0 to plot no FAL
+    title:
+        Overall figure title
+        Use '' to have no title
+    
+    Returns:
+    -------
+    None
+    """
+    if orb==0: #even if artificially b/c running twice
+        est_color = 'maroon'
+        est_ls = 'dashed'
+        est_label = 'Coe'
+        nonzero_orb = Coe_orb
+    else: 
+        est_color = 'darkseagreen'
+        est_ls = 'solid'
+        est_label = 'Haberl'
+        nonzero_orb = orb
+    
+    
+    print('Repeating periodogram and phase-fold after detrending')
+    #go up to higher windows when using spline; ~10 steps
+    if spline: 
+        #window = np.arange(3*nonzero_orb,700,int((700-3*nonzero_orb)/10),dtype='int16')
+        window = np.arange(100,700,50,dtype='int16')
+    else: 
+        window = np.arange(int(0.1*nonzero_orb),nonzero_orb*3,6,dtype='int16')  
+        if window[0]%2 == 0: window += 1
+
+    #minimum 5 plots: periodogram, zoomed periodogram, established, best near established, best overall
+    fig,ax = plt.subplots(1,num_panels,figsize=(5*num_panels+1,4)) 
+    #and then will separately make window plot
+
+    plt.subplots_adjust(wspace=0.25)
+    
+
+    bps = []
+    maxpow = []
+    faps = []
+    for w in window:
+        if spline:
+            itemp = splinedetrend(iband,window=w,btol=btol,retspline=False,rettemp=True)
+        else: 
+            detrend(iband,window=w)
+            itemp = iband
+        freq,power,bp,cfap = periodogram(itemp,minp=low,maxp=up,det=True,more=True,plot=False,fap=True)
+        ax[1].plot(1/freq,power,color='black') #previously ax[0]
+        bps.append(bp)
+        maxpow.append(np.max(power))
+        faps.append(cfap)            
+            
+    #final detrend used in phase-folded plots
+    finwin = window[np.argmax(maxpow)]
+    if spline:
+        itemp = splinedetrend(iband,window=finwin,btol=btol,retspline=False,rettemp=True)
+    else: 
+        detrend(iband,window=finwin)
+        itemp = iband
+    print(f'Window shown in phase-fold: {finwin}')
+        
+    #check in entire 2-200 day range and find peaks for peak_dict
+    fullfreq,fullpower,fullbp,false_alarm_level = periodogram(itemp,minp=2,maxp=200,det=True,more=True,plot=False,fap=False,fal=fal)
+    dpf = findpeaks(fullfreq,fullpower,sigma=sigmas[3],distance=dists[3],pkorder=True)
+    ax[0].plot(1/fullfreq,fullpower,color='black') 
+    ax[0].axhline(false_alarm_level,label=f'FAL {fal}',color='#3E2442',alpha=0.6,ls='dotted')
+    ax[1].axhline(false_alarm_level,color='#3E2442',alpha=0.6,ls='dotted')
+    
+    
+    #highest-powered best period near established
+    np1 = bps[np.argmax(maxpow)]
+    #highest-powered best period overall in 2-200d is fullbp
+    
+    #FAL checks
+    #peak near established
+    if false_alarm_level < np.max(maxpow): nearby_peak_above_fal = 'yes'
+    else: nearby_peak_above_fal = 'no'
+    if false_alarm_level < np.max(fullpower): overall_peak_above_fal = 'yes'
+    else: overall_peak_above_fal = 'no'
+    #number of peaks in 2-200d above FAL
+    num_peaks_above_fal = len(dpf[dpf['power']>false_alarm_level])
+    
+    if orb==0 or Coe_orb==0:
+        ax[0].axvline(nonzero_orb,color=est_color,ls=est_ls,alpha=0.4)
+        ax[1].axvline(nonzero_orb,color=est_color,ls=est_ls,alpha=0.4,label=f'{est_label} est. pd: {nonzero_orb}')
+    
+    else: #both nonzero so label both
+        ax[0].axvline(Coe_orb,color='maroon',ls='dashed',alpha=0.4)
+        ax[1].axvline(Coe_orb,color='maroon',ls='dashed',alpha=0.4,label=f'Coe est. pd: {Coe_orb}')
+        ax[0].axvline(orb,color='darkseagreen',alpha=0.4)
+        ax[1].axvline(orb,color='darkseagreen',alpha=0.4,label=f'Haberl est. pd: {orb}')
+
+    for i in [0,1]:ax[i].legend(framealpha=0.7)   
+        
+    #now phase-fold with each established period
+    ax[2].errorbar((itemp['MJD-50000']%nonzero_orb)/nonzero_orb,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=2,color=color,alpha=0.4,label=f'{est_label} est. pd: {nonzero_orb}',zorder=1)
+    ax[2].errorbar(1+(itemp['MJD-50000']%nonzero_orb)/nonzero_orb,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=2,color=color,alpha=0.4,zorder=1)
+    mido,avgo,erro = meanphase(itemp,nonzero_orb,pbins=pbins,det=True,double=True,divide=True,sterr=True,stdev=True)
+    #plot as step function
+    ax[2].step(mido,avgo,where='mid',color='black')
+    ax[2].errorbar(mido,avgo,yerr=erro,color='black',alpha=0.4,ls='none')
+        
+    maxi,mini = np.max(itemp['I detrend']),np.min(itemp['I detrend'])
+    medi = np.median(itemp['I detrend'])
+    #cut out outliers
+    maxa,mina = np.max(avgo)+np.max(erro),np.min(avgo)-np.max(erro)
+    medi = np.median(itemp['I detrend'])
+    #cut out outliers
+    if medlim:
+        ax[2].set_ylim(maxa+.01,mina-.01)
+        #ax[2].set_ylim(medi+.06,medi-.06)
+        ax[3].set_ylim(maxa+.01,mina-.01)
+    else:
+        ax[2].set_ylim(maxi+.01,mini-.01)
+        ax[3].set_ylim(maxi+.01,mini-.01)
+
+    #phase-fold with best period near established
+    ax[3].errorbar((itemp['MJD-50000']%np1)/np1,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=2,alpha=0.4,color=color,label=f'LS peak near est.: {np1:.2f}',zorder=1)
+    ax[3].errorbar(1+(itemp['MJD-50000']%np1)/np1,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=2,color=color,zorder=1,alpha=0.4)
+    midn,avgn,errn = meanphase(itemp,np1,pbins=pbins,det=True,double=True,divide=True,sterr=True,stdev=True)
+    maxa,mina = np.max(avgn)+np.max(errn),np.min(avgn)-np.max(errn)
+    medi = np.median(itemp['I detrend'])
+    #cut out outliers
+    if medlim:
+        ax[3].set_ylim(maxa+.01,mina-.01)
+    ax[3].step(midn,avgn,where='mid',color='black')
+    ax[3].errorbar(midn,avgn,yerr=errn,color='black',alpha=0.4,ls='none')
+
+    ax[2].legend(loc='lower left')
+    ax[3].legend(loc='lower left')
+    ax[2].set_ylabel('I detrended',fontsize=13)
+    ax[2].set_xlabel('Phase',fontsize=13)   
+    ax[3].set_xlabel('Phase',fontsize=13)
+    ax[0].set_ylabel('LS Power',fontsize=13)
+    for i in [0,1]: ax[i].set_xlabel('Period (days)',fontsize=13)
+    
+    #phase-fold with best period overall in 2-200 day range (fullbp)
+    ax[4].errorbar((itemp['MJD-50000']%fullbp)/fullbp,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=2,alpha=0.4,color=color,label=f'overall LS peak: {fullbp:.2f}',zorder=1)
+    ax[4].errorbar(1+(itemp['MJD-50000']%fullbp)/fullbp,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=2,color=color,zorder=1,alpha=0.4)
+    midn,avgn,errn = meanphase(itemp,fullbp,pbins=pbins,det=True,double=True,divide=True,sterr=True,stdev=True)
+    maxa,mina = np.max(avgn)+np.max(errn),np.min(avgn)-np.max(errn)
+    medi = np.median(itemp['I detrend'])
+    #cut out outliers
+    if medlim: ax[4].set_ylim(maxa+.01,mina-.01)
+    else: ax[4].set_ylim(maxi+.01,mini-.01)
+    ax[4].step(midn,avgn,where='mid',color='black')
+    ax[4].errorbar(midn,avgn,yerr=errn,color='black',alpha=0.4,ls='none')
+    ax[4].legend(loc='lower left') 
+    ax[4].set_xlabel('Phase',fontsize=13)
+    if len(title)>1: fig.suptitle(title,fontsize=13)
+        
+    if num_panels==6:
+        ax[5].errorbar((itemp['MJD-50000']%Coe_orb)/Coe_orb,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=2,alpha=0.4,color=color,label=f'Coe est. pd: {Coe_orb:.2f}',zorder=1)
+        ax[5].errorbar(1+(itemp['MJD-50000']%Coe_orb)/Coe_orb,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=2,color=color,zorder=1,alpha=0.4)
+        midn,avgn,errn = meanphase(itemp,Coe_orb,pbins=pbins,det=True,double=True,divide=True,sterr=True,stdev=True)
+        ax[5].step(midn,avgn,where='mid',color='black')
+        ax[5].errorbar(midn,avgn,yerr=errn,color='black',alpha=0.4,ls='none')
+        ax[5].legend(loc='lower left') 
+        ax[5].set_xlabel('Phase',fontsize=13)
+        if medlim: ax[5].set_ylim(maxa+.01,mina-.01)
+        else: ax[5].set_ylim(maxi+.01,mini-.01)
+    if save: plt.savefig(file,bbox_inches='tight')
+    plt.show()
+    
+    plt.figure()
+    plt.scatter(window,bps,c=maxpow)
+    plt.colorbar(label='Power')
+    plt.ylabel('Peak Period',fontsize=13)
+    plt.xlabel('Detrending Window',fontsize=13)
+    plt.axhline(nonzero_orb,color='darkseagreen',alpha=0.4)
+    
+    #returns best detrended period within a tenth of the non-zero orbital period and table of peaks from full 2-200 detrended periodogram
+    if ret_fal: return np1,fullbp,dpf,nearby_peak_above_fal,overall_peak_above_fal,num_peaks_above_fal
+    else: return np1,dpf
+        
+    
+def compare_phasefold_without_est(itemp,iband,bp2,pbins,window,color,medlim,sigmas,dists,fal=0.001,title='',ret_fal=False):
+    '''If there is no established period, plot the phase-folded data with the best period from the original 2-200d periodogram,
+    the detrended 2-200d periodogram, and the phase-folded detrended data using the detrended peak'''    
+    fig,ax = plt.subplots(1,3,figsize=(15,4))
+    plt.subplots_adjust(wspace=0.25)
+    #detrend and fold with peak from middle periodogram
+    print(f'using best period from middle periodogram to phase-fold data, after detrending with {window}')
+    ax[0].errorbar((itemp['MJD-50000']%bp2)/bp2,itemp['I mag'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=4,color=color,label=f'peak pd: {bp2:.2f}',zorder=1,alpha=0.4)
+    ax[0].errorbar(1+(itemp['MJD-50000']%bp2)/bp2,itemp['I mag'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=4,color=color,zorder=1,alpha=0.4)
+    mid,avg,err = meanphase(itemp,bp2,pbins=pbins,det=False,double=True,divide=True,sterr=True,stdev=True)
+    ax[0].step(mid,avg,where='mid',color='black')
+    ax[0].errorbar(mid,avg,yerr=err,ls='none',color='black',alpha=0.4)
+    maxa,mina = np.max(avg)+np.max(err),np.min(avg)-np.max(err)
+    maxi,mini = np.max(itemp['I mag']),np.min(itemp['I mag'])
+    if medlim: ax[0].set_ylim(maxa+.01,mina-.01)
+    else: ax[0].set_ylim(maxi+.02,mini-.02)
+    ax[0].set_ylabel('I mag',fontsize=13)
+    ax[0].set_xlabel('Phase',fontsize=13)
+    ax[0].legend()
+
+    #detrended periodogram and fold with peak
+    print('running periodogram on detrended data')
+    freq,power,bpdet,false_alarm_level = periodogram(itemp,det=True,minp=2,maxp=200,more=True,plot=False,fap=False,fal=fal)
+    #check in entire 2-200 day range and find peaks for peak_dict
+    dpf = findpeaks(freq,power,sigma=sigmas[3],distance=dists[3],pkorder=True)
+    
+    if ret_fal:
+        if false_alarm_level < np.nanmax(power): overall_peak_above_fal = 'yes'
+        else: overall_peak_above_fal = 'no'
+        #number of peaks in 2-200d above FAL
+        num_peaks_above_fal = len(dpf[dpf['power']>false_alarm_level])
+    
+        
+    #plot periodogram
+    ax[1].plot(1/freq,power,color='black')
+    ax[1].axhline(false_alarm_level,label=f'FAL {fal}',color='#3E2442',alpha=0.6,ls='dotted')   
+    ax[1].legend()
+    ax[1].set_ylabel('LS Power (using detrended I mag)',fontsize=13)
+    ax[1].set_xlabel('Period (days)',fontsize=13)
+        
+    #phase-fold with peak from detrended periodogram
+    ax[2].errorbar((itemp['MJD-50000']%bpdet)/bpdet,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=4,color=color,label=f'det peak pd: {bpdet:.2f}',zorder=1,alpha=0.4)
+    ax[2].errorbar(1+(itemp['MJD-50000']%bpdet)/bpdet,itemp['I detrend'],yerr=itemp['I mag err'],linestyle='none',marker='o',markersize=4,color=color,zorder=1,alpha=0.4)
+    mid,avg,err = meanphase(iband,bpdet,pbins=pbins,det=True,double=True,divide=True,sterr=True,stdev=True)
+    ax[2].step(mid,avg,where='mid',color='black') 
+    ax[2].errorbar(mid,avg,yerr=err,ls='none',color='black',alpha=0.4) 
+    maxa,mina = np.max(avg)+np.max(err),np.min(avg)-np.max(err)
+    maxi,mini = np.max(itemp['I detrend']),np.min(itemp['I detrend'])
+    if medlim: ax[2].set_ylim(maxa+.01,mina-.01)
+    else:ax[2].set_ylim(maxi+.02,mini-.02)
+    ax[2].set_ylabel('detrended I mag',fontsize=13)
+    ax[2].set_xlabel('Phase',fontsize=13)
+    ax[2].legend()
+    if len(title)>1: fig.suptitle(title,fontsize=13)
+    
+    if ret_fal: return bpdet,dpf,overall_peak_above_fal,num_peaks_above_fal
+    else:return bpdet,dpf
+    
+def print_basic_quantities(iband,vband):
+    '''Print summary statistics (as part of basic()) '''
+    print('\n')
+    print('max I band: ',np.max(iband['I mag']))
+    print('min I band: ',np.min(iband['I mag']))
+    print('I range: ',np.max(iband['I mag'])-np.min(iband['I mag']))
+    print('I stdev: ',np.std(iband['I mag']))
+
+    
+    print('max V band: ',np.max(vband['V mag']))
+    print('min V band: ',np.min(vband['V mag']))
+    print('V range: ',np.max(vband['V mag'])-np.min(vband['V mag']))
+    print('V stdev: ',np.std(vband['V mag']))
 #-----------------------------------------------------------------PERIODOGRAMS--------------------------------------------------------------
 
 
-def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,plotdet=False,figsize=(12,4),plotpd=True,samples=10,spline=False,btol=50):
+def knownorb(itab,orb,lower=10,upper=10,window=11,cutdata=False,cut1=0,cut2=500,plotdet=False,figsize=(12,4),plotpd=True,samples=50,spline=False,btol=50):
     '''Use known orbital period (or estimate) to inform detrending and periodogram.
     lower and upper subtracted/added onto orb to give periodogram bounds
     small detrending window default
@@ -502,7 +957,7 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
     #return tbp,bp2,np.mean(bps),obp
 
     
-def meanphase(tab,pd,pbins=20,det=False,med=False,double=True,stdev=True,epoch=0,divide=True,sterr=True):
+def meanphase(tab,pd,pbins=20,manualy='',det=False,med=False,double=True,stdev=True,epoch=0,divide=True,sterr=True):
     '''Compute mean mag in phase bins of LC
     divide: phase only goes to 1 or 2
     sterr: return standard error (so divide stdev by square root of number of points in bin); stdev must also be True'''
@@ -514,8 +969,11 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=True,stdev=True,epoch=0
     if divide: fr['phase'] /= pd
     fr = fr.sort_values(by='phase',ascending=True)
     #use detrended or regular imag
-    if det: imag = fr['I detrend']
-    else: imag = fr['I mag']
+    if len(manualy)>0:
+        imag = fr[manualy]
+    else:
+        if det: imag = fr['I detrend']
+        else: imag = fr['I mag']
     #find average count rate in each phase bin
         
     #other method with just loop length of number of phase bins
@@ -529,8 +987,11 @@ def meanphase(tab,pd,pbins=20,det=False,med=False,double=True,stdev=True,epoch=0
         tempfr = fr[fr['phase']<=p]
         if divide: tempfr = tempfr[tempfr['phase']>p-1/pbins]
         else: tempfr = tempfr[tempfr['phase']>p-pd/pbins]
-        if det: imagt = tempfr['I detrend']
-        else: imagt = tempfr['I mag']
+        if len(manualy)>0:
+            imagt = tempfr[manualy]
+        else:
+            if det: imagt = tempfr['I detrend']
+            else: imagt = tempfr['I mag']
         #use median instead
         if med:avgs.append(np.median(imagt))
         else: avgs.append(np.mean(imagt))
@@ -717,7 +1178,7 @@ def findbeat(p1,p2):
     return 1/np.abs(1/p1 - 1/p2)
 
 def multiphase(tab,st=0,end=-1,dense=True,orb=10,incl_orb=True,meanp=True,sigma=20,distance=30,minp=5,maxp=100,
-               pbins=10,maxspace=20,plotpd=False,color='darkseagreen',top5=True,pkorder=False,samples=10):
+               pbins=10,maxspace=20,plotpd=False,color='darkseagreen',top5=True,pkorder=False,samples=50):
     '''Uses findpeaks to run periodogram, find peaks, and then phase folds with each one as well as, 
     optionally, the known orbital period.
     
@@ -934,22 +1395,23 @@ def detrend(tab,window=201,printall=False,plot=False,figsize=(4,3),size=3):
         plt.scatter(tab['MJD-50000'],tab['I detrend'],color='darkseagreen',label='detrended',s=size)
         plt.legend()
         
-def splinedetrend(tab,window=201,btol=50,retspline=False):
+def splinedetrend(tab,window=201,btol=50,retspline=False,rettemp=False):
     '''Add detrended I mag as I detrend in table
     retspline (bool): return flatten, trend from wotan.flatten'''
     flatten, trend = wotan.flatten(tab['MJD-50000'],tab['I mag'],method='rspline',window_length=window,break_tolerance=btol,return_trend=True)
-    #change nans to zeros -- but figure out way to ignore so as to not add false values to periodogram
-    trend[np.isnan(trend)] = 0
-    #add detrended column: original - trend + mean
-    mean = np.mean(tab['I mag'])
-    detr = tab['I mag'] - trend + mean
-    #replace outliers (more than a magnitude from mean) with mean
-    detr[np.abs(detr-mean)>1] = mean
-    tab['I detrend'] = detr
-    if retspline:
-        return flatten,trend
+    mean = np.nanmean(tab['I mag'])
+    tab['I detrend'] = tab['I mag'] - trend + mean
     
-#spline detrending
+    #use table where nan rows are taken out: itemp
+    itemp = tab[np.isnan(tab['I detrend'])==False]
+    #also ignore outliers by greater than a mag
+    itemp = itemp[np.abs(itemp['I detrend']-mean)<1]
+    
+    if retspline and rettemp: return flatten,trend,itemp
+    elif retspline: return flatten,trend
+    elif rettemp: return itemp
+    #else: return
+    
 def splinesearch(srcn,cross,full,minp=5,maxp=100,det=True,window=200,both=True,btol=50,phase=True,color='black',ylim=.06,close=False,mlist=['OII I','OIII I'],calib=False):
     '''Load in light curve and plot; spline detrend, and search for orbital period'''
     #get I and V LCs and plot
@@ -963,12 +1425,12 @@ def splinesearch(srcn,cross,full,minp=5,maxp=100,det=True,window=200,both=True,b
     time = iband['MJD-50000']
     flux = iband['I mag']
     #detrend with rspline
-    flatten_lc1,trend_lc1 = splinedetrend(iband,window=window,btol=btol,retspline=True)
+    flatten_lc1,trend_lc1,itemp = splinedetrend(iband,window=window,btol=btol,retspline=True,rettemp=True)
     plt.plot(time, trend_lc1, color='black', linewidth=1, label='rspline')
     if close: plt.close()
-    #periodogram with detrended
+    #periodogram with detrended with nans and outliers removed
     if det: 
-        bp = periodogram(iband,det=True,minp=minp,maxp=maxp)
+        bp = periodogram(itemp,det=True,minp=minp,maxp=maxp)
         mag = 'I detrend'
     #periodogram without detrending:
     else: 
@@ -1017,7 +1479,7 @@ def detline(tab,st=0,end=-1,plot=False,figsize=(12,4),color='palevioletred',size
     return lindet
 
 
-def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,figsize=(4,3),plot=True,dodetrend=False,wfunc=False,window=11,samples=10,color='black'):
+def periodogram(tab,det=False,more=False,minp=5,maxp=30,manualy='',bayes=False,sub=False,fap=False,fal=0,figsize=(4,3),plot=True,dodetrend=False,wfunc=False,window=11,samples=50,color='black'):
     '''Perform and plot single LS periodogram.
     Two different return options.
     wfunc: plot window function, so set all y to 1 in periodogram'''
@@ -1026,9 +1488,12 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
     if dodetrend:
         #decide whether to actually modify tab or create copy just for periodogram
         detrend(tab,window=window)
-    if wfunc: y = 1
-    elif det: y = tab['I detrend']
-    else: y = tab['I mag']
+    if len(manualy)>0:
+        y = tab[manualy]
+    else:
+        if wfunc: y = 1
+        elif det: y = tab['I detrend']
+        else: y = tab['I mag']
 #     dy = tab['I mag err']
     minf = 1./maxp
     maxf = 1./minp
@@ -1037,6 +1502,8 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
                            minimum_frequency=minf,
                            maximum_frequency=maxf,
                            samples_per_peak=samples)
+    if fap: peakfap = ls.false_alarm_probability(power.max(),minimum_frequency=minf, maximum_frequency=maxf, samples_per_peak=samples) #default method but can try out bootstrap as well
+    if fal>0: return_fal = ls.false_alarm_level(fal)
     if bayes: power = np.exp(power)
         
     best_freq = freq[np.argmax(power)]
@@ -1047,9 +1514,16 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,bayes=False,sub=False,fi
         plt.xlabel('Period',fontsize=14)
         plt.ylabel('Power',fontsize=14)
         #put text with best period
-        plt.text(minp+(maxp-minp)/2,0.8*np.max(power),f'{1/best_freq:.2f}')
-    if more:
+        plt.text(minp+(maxp-minp)/2,0.8*np.max(power),f'{1/best_freq:.2f}') 
+    if more and not fap and fal==0:
         return freq, power, 1/best_freq
+    #currently can return EITHER peak's false alarm probability or false alarm level
+    elif more and fal>0: return freq, power, 1/best_freq, return_fal
+    elif more and fap:
+        return freq, power, 1/best_freq, peakfap
+    elif fap: 
+        return 1/best_freq, peakfap
+    elif fal>0: return 1/best_freq, return_fal
     else:
         return 1/best_freq
 #-----------------------------------------------------------------FITTING PHASE-FOLD----------------------------------------------------------
@@ -1587,3 +2061,40 @@ def tplot(typen,tab,text=False,label='1',marker='o',color='black',x='stdev I',y=
     #make histogram
     if len(histval)>0:
         sb.distplot(histval,color=color,kde=False,label=label)
+        
+def separate_clumps(src,cross,mlist1,min_gap=50,plot=True,minpoints=100,debug_indices=False):
+    """Separate clumps in a light curve by identifying time gaps greater than a specified minimum gap size.
+
+    Args:
+        src (str): The original source number.
+        cross (str)
+        mlist1 (list): mlist1 for pulsating sources and mlist2 for part 2/non-pulsating sources.
+        min_gap (int, optional): The minimum gap size to separate clumps. Defaults to 50 (days). 
+        plot (bool, optional): Whether or not to plot the separated light curve parts. Defaults to True.
+
+    Returns 
+        sep_tables (list): A list of separated light curve tables.
+    """
+    #mlist2 for part 2 sources
+    iband = getIV(src,cross,stack=True,both=False,mlist=mlist1)
+    splinedetrend(iband)
+    #find time difference between points
+    gaps = iband['MJD-50000'][1:]-iband['MJD-50000'][:-1]
+    #get indices with gaps large enough for separation
+    large_gaps = np.where(gaps>min_gap)[0]
+    if plot:
+        plt.scatter(iband['MJD-50000'],iband['I mag'],color='black',s=2)
+        for i in large_gaps: plt.axvline(iband['MJD-50000'][i],color='navy',ls='dotted')
+        plt.ylim(np.nanmax(iband['I mag'])+.02,np.nanmin(iband['I mag'])-.02)
+    sep_tables = []
+    indices = np.array([0]+list(large_gaps))
+    if debug_indices: return indices
+    numpoints = indices[1:]-indices[:-1]
+    indices = indices[np.where(numpoints>minpoints)[0]]
+    for i in range(len(indices)-1):
+        start,end = indices[i]+1,indices[i+1]
+        sep_tables.append(iband[start:end])
+    sep_tables.append(iband[1+indices[-1]:])
+    
+    #returns list of separated light curve parts
+    return sep_tables
