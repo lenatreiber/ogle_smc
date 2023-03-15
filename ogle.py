@@ -258,6 +258,21 @@ def colormag(iband,vband,figsize=(7,8),plot=True,printcorr=True,retint=False,cti
         plt.savefig(file+'.pdf',bbox_inches='tight')
     if retint or not plot: return i_interp
     else: return
+    
+def carrow(vband,interp,vi=[],retvect=False,fs=(6,4),colors=['#CF6275','darkseagreen']):
+    if len(vi)==0: vi = vband['V mag']-interp
+    plt.figure(figsize=fs)
+    plt.scatter(vi,interp,color=colors[0])
+    #vectors
+    yvect = interp[1:]-interp[:-1]
+    xvect = vi[1:]-vi[:-1]
+    plt.quiver(vi[:-1],interp[:-1],xvect,yvect,angles='xy',scale_units='xy',scale=1,color=colors[1],alpha=0.5)
+    #flip I mag axis
+    maxi,mini = np.max(interp),np.min(interp)
+    plt.ylim(maxi+.02,mini-.02)
+    plt.ylabel('I mag',fontsize=13)
+    plt.xlabel('V-I',fontsize=13)
+    if retvect: return xvect,yvect
 
 #-----------------------------------------------------------------SEPARATED PARTS OF BASIC FUNCTION--------------------------------------------------------------
 def grab_initial_basic(index,full,nums,src_dict):
@@ -957,7 +972,7 @@ def autopd(tab,orb,printall=True,plotpd=False,plotphase=False,figsize=(3,2),figs
     #return tbp,bp2,np.mean(bps),obp
 
     
-def meanphase(tab,pd,pbins=20,manualy='',det=False,med=False,double=True,stdev=True,epoch=0,divide=True,sterr=True):
+def meanphase(tab,pd,pbins=20,manualy='',det=False,med=False,double=True,stdev=True,epoch=0,divide=True,sterr=True,band='I'):
     '''Compute mean mag in phase bins of LC
     divide: phase only goes to 1 or 2
     sterr: return standard error (so divide stdev by square root of number of points in bin); stdev must also be True'''
@@ -972,8 +987,8 @@ def meanphase(tab,pd,pbins=20,manualy='',det=False,med=False,double=True,stdev=T
     if len(manualy)>0:
         imag = fr[manualy]
     else:
-        if det: imag = fr['I detrend']
-        else: imag = fr['I mag']
+        if det: imag = fr[f'{band} detrend']
+        else: imag = fr[f'{band} mag']
     #find average count rate in each phase bin
         
     #other method with just loop length of number of phase bins
@@ -990,8 +1005,8 @@ def meanphase(tab,pd,pbins=20,manualy='',det=False,med=False,double=True,stdev=T
         if len(manualy)>0:
             imagt = tempfr[manualy]
         else:
-            if det: imagt = tempfr['I detrend']
-            else: imagt = tempfr['I mag']
+            if det: imagt = tempfr[f'{band} detrend']
+            else: imagt = tempfr[f'{band} mag']
         #use median instead
         if med:avgs.append(np.median(imagt))
         else: avgs.append(np.mean(imagt))
@@ -1017,22 +1032,25 @@ def meanphase(tab,pd,pbins=20,manualy='',det=False,med=False,double=True,stdev=T
 
 #can consider def denseyear as separate function
 
-def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=True,retall=False,epoch=0,sterr=True,divide=True,label=''):
+def phasestep(iband,pd,pbins,det=False,med=False,double=True,color='black',err=True,retall=False,epoch=0,sterr=True,divide=True,label='',usev=False):
     '''Step function for phase-folded data
     To do: ability to plot on input set of axes rather than creating new plot'''
     #use mean phase to get middle values of bins and means in each bin
-    mid,avg,std = meanphase(iband,pd,pbins=pbins,det=det,med=med,double=double,stdev=True,sterr=sterr,epoch=epoch,divide=divide)
+    if usev:band='V'
+    else:band='I'
+    mid,avg,std = meanphase(iband,pd,pbins=pbins,det=det,med=med,double=double,stdev=True,sterr=sterr,epoch=epoch,divide=divide,band=band)
     plt.step(mid,avg,where='mid',color=color,label=label)
     #add errors as one sigma
     if err: plt.errorbar(mid,avg,yerr=std,color=color,marker='',linestyle='none',alpha=0.4)
     #flip y axis 
     maxa,mina = np.nanmax(avg),np.nanmin(avg)
     if err:
-        maxa += std[np.argmax(avg)]
-        mina -= std[np.argmin(avg)]
+        maxa += std[np.nanargmax(avg)]
+        mina -= std[np.nanargmin(avg)]
     plt.ylim(maxa+.01,mina-.01)
-    plt.ylabel('I mag')
-    plt.xlabel('Phase (days)')
+    if usev:plt.ylabel('V mag',fontsize=14)
+    else:plt.ylabel('I mag',fontsize=14)
+    plt.xlabel('Phase (days)',fontsize=14)
     if retall and err: return mid,avg,std
     elif retall: return mid,avg
     else: return
@@ -1404,13 +1422,30 @@ def splinedetrend(tab,window=201,btol=50,retspline=False,rettemp=False):
     
     #use table where nan rows are taken out: itemp
     itemp = tab[np.isnan(tab['I detrend'])==False]
-    #also ignore outliers by greater than a mag
-    itemp = itemp[np.abs(itemp['I detrend']-mean)<1]
+    #also ignore outliers by greater than a mag: effectively not so relevant since this is a large bound    
+    itemp = itemp[np.abs(itemp['I detrend']-mean)<1]     
     
     if retspline and rettemp: return flatten,trend,itemp
     elif retspline: return flatten,trend
     elif rettemp: return itemp
     #else: return
+    
+    
+def splinedetrend_vband(tab,window=201,btol=50,retspline=False,rettemp=False):
+    '''Add detrended V mag as V detrend in table
+    retspline (bool): return flatten, trend from wotan.flatten'''
+    flatten, trend = wotan.flatten(tab['MJD-50000'],tab['V mag'],method='rspline',window_length=window,break_tolerance=btol,return_trend=True)
+    mean = np.nanmean(tab['V mag'])
+    tab['V detrend'] = tab['V mag'] - trend + mean
+    
+    #use table where nan rows are taken out: itemp
+    vtemp = tab[np.isnan(tab['V detrend'])==False]
+    #also ignore outliers by greater than a mag
+    vtemp = vtemp[np.abs(vtemp['V detrend']-mean)<1]        
+    
+    if retspline and rettemp: return flatten,trend,vtemp
+    elif retspline: return flatten,trend
+    elif rettemp: return vtemp
     
 def splinesearch(srcn,cross,full,minp=5,maxp=100,det=True,window=200,both=True,btol=50,phase=True,color='black',ylim=.06,close=False,mlist=['OII I','OIII I'],calib=False):
     '''Load in light curve and plot; spline detrend, and search for orbital period'''
@@ -1502,7 +1537,8 @@ def periodogram(tab,det=False,more=False,minp=5,maxp=30,manualy='',bayes=False,s
                            minimum_frequency=minf,
                            maximum_frequency=maxf,
                            samples_per_peak=samples)
-    if fap: peakfap = ls.false_alarm_probability(power.max(),minimum_frequency=minf, maximum_frequency=maxf, samples_per_peak=samples) #default method but can try out bootstrap as well
+    if fap: peakfap = ls.false_alarm_probability(power.max(),minimum_frequency=minf, maximum_frequency=maxf, samples_per_peak=samples) 
+    #default method but can try out bootstrap as well
     if fal>0: return_fal = ls.false_alarm_level(fal)
     if bayes: power = np.exp(power)
         
@@ -1760,6 +1796,43 @@ def monotonic(L,retwhich=False):
     if retwhich: return (inc or dec), inc #returns monotonic bool followed by bool for increasing
     else: return inc or dec
     
+def mono_count(df,fdf,minimum=3,col='residual',divide=True):
+    #used in res_brightness in Mar23_InitialColorMag.ipynb to help develop loop metric
+    #make sure df sorted by time
+    df = df.sort_values(by='day')
+    #double check that days in order
+    if not monotonic(df['day']):print('days not in order')
+    #try to quantify loopiness by counting how many points before and after peaks are monotonic
+    num_mon = 0 #counter for monotonic
+    i = 0 #begin with first point
+    nswitch = 0 #number of immediate switches from monotonically increasing to monotonically decreasing
+    this_inc = False
+    #repeat for points after peak
+    while i+2 < len(df[col]): 
+        sub = 2
+        mono = True
+        while mono and i+sub<len(df[col]):
+            #saves whether or not previous monotonic trend was increasing
+            mono,inc = monotonic(df[col][i:i+sub],retwhich=True)
+            #be careful since I band flipped
+            if mono: this_inc = not inc #final inc that's saved is during monotonicity
+            sub+=1
+        #add to num_mon based on what sub left off on; it automatically gets to 3
+        if sub-1>minimum: #minimum 3 passes as long as sub is 4
+            #subtracts 3 b/c sub automatically gets there
+            num_mon += sub-3 #adds nothing if there aren't monotonic points of at least minimum
+            #add to nswitch if this round was not increasing, last round was increasing, and last round is usable (min points) 
+            if this_inc: #if it was increasing right before the start
+                #look ahead to determine if it switches to monotonic decreasing
+                mon,tinc = monotonic(df[col][i+sub-2:i+sub+1+(minimum-3)],retwhich=True)
+                #put not tinc back in?
+                if mon and tinc: #if next three monotonically decreasing, add 1 to number of switches
+                    nswitch+=1
+        #now reset i to i+sub to start again
+        i += sub-2 #adds 1 if no monotonic behavior
+    if divide: return num_mon/len(df),nswitch
+    return num_mon,nswitch
+    
 def cut(srcn,cross,cross2,mlist1,mlist2,cut=10,npoints=False,time=False,minp=1,retstd=True,retrange=False,calib=False,plot=True,text=False,statistic='median',glob=False,retsplit=False,window=200,old=False): #decide whether to do fixed chunks or fixed factor chunks or fixed number of points
     '''Divide LC into chunks and find median in each
     Division can be by number of points per piece or by total number of pieces.
@@ -1822,7 +1895,7 @@ def cut(srcn,cross,cross2,mlist1,mlist2,cut=10,npoints=False,time=False,minp=1,r
         if not time:
             timesplit = np.array_split(iband['MJD-50000'],cut)
             trendsplit = np.array_split(trend,cut)
-        return timesplit,imagsplit,splinesplit,trendsplit
+        return timesplit,imagsplit,splinesplit,trendsplit,[np.nanmin(iband['I mag']),np.nanmax(iband['I mag'])]
     stats = []
     #TO DO: option to calculate statistic on detrended instead
     for i in range(cut):
@@ -2041,7 +2114,7 @@ def bigdip(s,cross,cross2,mlist1,mlist2,ncut=30,npoints=False,time=False,minimum
 
 #PLOTTING TYPES
     
-def tplot(typen,tab,text=False,label='1',marker='o',color='black',x='stdev I',y='det stdev I'):
+def tplot(typen,tab,,text=False,label='1',marker='o',color='black',x='stdev I',y='det stdev I'):
     #for histograms have to add to list and then make hist
     histval = []
     for t in typen:
